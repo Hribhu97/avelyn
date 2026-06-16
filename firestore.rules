@@ -26,11 +26,11 @@ service cloud.firestore {
       allow create: if isAuthenticated() && request.auth.uid == userId 
         && (request.resource.data.role == 'user' || (request.resource.data.role == 'admin' && (request.auth.token.email == 'tapadarhribhu@gmail.com' || request.auth.token.phone_number == '+911234567890')));
       allow update: if (isOwner(userId) && (
-        request.resource.data.role == resource.data.role &&
-        request.resource.data.phoneNumber == resource.data.phoneNumber &&
-        request.resource.data.clientId == resource.data.clientId &&
-        request.resource.data.referralCode == resource.data.referralCode &&
-        request.resource.data.createdAt == resource.data.createdAt
+        request.resource.data.role == resource.data.get('role', request.resource.data.role) &&
+        request.resource.data.phoneNumber == resource.data.get('phoneNumber', request.resource.data.phoneNumber) &&
+        request.resource.data.clientId == resource.data.get('clientId', request.resource.data.clientId) &&
+        request.resource.data.referralCode == resource.data.get('referralCode', request.resource.data.referralCode) &&
+        request.resource.data.createdAt == resource.data.get('createdAt', request.resource.data.createdAt)
       )) || (
         // Allow another authenticated user to update referrer stats when applying a referral
         isAuthenticated() && 

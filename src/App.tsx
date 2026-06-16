@@ -214,6 +214,10 @@ export default function App() {
           updated.email = authUser.email || '';
           needsUpdate = true;
         }
+        if (!updated.createdAt) {
+          updated.createdAt = new Date().toISOString();
+          needsUpdate = true;
+        }
 
         if (needsUpdate) {
           try {
@@ -285,6 +289,7 @@ export default function App() {
       tourCompleted: false,
       cart: [],
       orders: [],
+      createdAt: new Date().toISOString(),
     };
     
     setSession(empty);
