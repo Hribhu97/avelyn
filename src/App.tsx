@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { jsPDF } from 'jspdf';
 import {
   signOut,
   onAuthStateChanged,
   type User as FirebaseUser,
-  RecaptchaVerifier,
-  signInWithPhoneNumber
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signInWithPopup
 } from 'firebase/auth';
 import Onboarding from './components/Onboarding';
 import Mascot from './components/Mascot';
@@ -17,8 +19,9 @@ import HealthScore from './components/HealthScore';
 import HealthCheckIn from './components/HealthCheckIn';
 import AvelynAdvice from './components/AvelynAdvice';
 import AvelynCamera from './components/AvelynCamera';
-import AvelynStickers from './components/AvelynStickers';
 import AvelynLogo from './components/AvelynLogo';
+import OnboardingTour from './components/OnboardingTour';
+import GeminiChatbot from './components/GeminiChatbot';
 import { firebaseAuth, googleProvider, db } from './lib/firebase';
 import { 
   doc, onSnapshot, setDoc, updateDoc, collection, getDocs, addDoc, query, where 
@@ -68,11 +71,10 @@ import {
 } from 'lucide-react';
 
 const DEFAULT_TASKS: DailyTask[] = [
-  { id: 'task-water', label: 'Refresh Drinking Water 💧', done: false, xpReward: 15, category: 'hydration', icon: 'droplet' },
-  { id: 'task-pellets', label: 'Serve Pellet & Veg Chop mix 🥦', done: false, xpReward: 20, category: 'nutrition', icon: 'utensils' },
-  { id: 'task-social', label: '15 Mins Active Social Play ❤️', done: false, xpReward: 20, category: 'social', icon: 'heart' },
+  { id: 'task-water', label: 'Refresh Drinking Water 💧', done: false, xpReward: 25, category: 'hydration', icon: 'droplet' },
+  { id: 'task-pellets', label: 'Serve Pellet & Veg Chop mix 🥦', done: false, xpReward: 25, category: 'nutrition', icon: 'utensils' },
+  { id: 'task-social', label: '15 Mins Active Social Play ❤️', done: false, xpReward: 25, category: 'social', icon: 'heart' },
   { id: 'task-flight', label: 'Supervised Free Flight Time ✈️', done: false, xpReward: 25, category: 'exercise', icon: 'navigation' },
-  { id: 'task-cage', label: 'Clean Cage Bottom Tray ✨', done: false, xpReward: 20, category: 'custom', icon: 'trash' },
 ];
 
 const DEFAULT_BADGES: Badge[] = [
@@ -90,23 +92,20 @@ export default function App() {
   const [authReady, setAuthReady] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
   const [session, setSession] = useState<UserState | null>(null);
-  const [activeTab, setActiveTab] = useState<'home' | 'lessons' | 'discover' | 'community' | 'badges' | 'admin'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'lessons' | 'discover' | 'community' | 'admin'>('home');
   const [referralInput, setReferralInput] = useState('');
   const [referralStatus, setReferralStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
-  const [simulatedMissedDays, setSimulatedMissedDays] = useState(false);
+  const simulatedMissedDays = false;
   const [flockName, setFlockName] = useState('Kiwi');
   const [editingFlockName, setEditingFlockName] = useState(false);
   const [showLevelUp, setShowLevelUp] = useState(false);
 
-  // Phone OTP Auth States
-  const [phoneNumber, setPhoneNumber] = useState('');
-  const [countryCode, setCountryCode] = useState('+91');
-  const [otpCode, setOtpCode] = useState('');
-  const [confirmationResult, setConfirmationResult] = useState<any>(null);
-  const [otpSent, setOtpSent] = useState(false);
-  const [otpLoading, setOtpLoading] = useState(false);
-  const [otpError, setOtpError] = useState<string | null>(null);
-  const [resendCooldown, setResendCooldown] = useState(0);
+  // Email and Password Auth States
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [authError, setAuthError] = useState<string | null>(null);
   const [showMascotModal, setShowMascotModal] = useState(false);
 
   // Mobile, Splash & Audio States
@@ -170,9 +169,12 @@ export default function App() {
         let needsUpdate = false;
         const updated = { ...data };
 
-        const adminPhoneNumber = process.env.ADMIN_PHONE_NUMBER || '+917980176991';
+        const adminPhoneNumber = process.env.ADMIN_PHONE_NUMBER || '+911234567890';
         if (!updated.role) {
-          updated.role = authUser.phoneNumber === adminPhoneNumber ? 'admin' : 'user';
+          const adminEmail = process.env.ADMIN_EMAIL || 'tapadarhribhu@gmail.com';
+          const isAdminEmail = authUser.email === adminEmail;
+          const isAdminPhone = authUser.phoneNumber === adminPhoneNumber;
+          updated.role = isAdminEmail || isAdminPhone ? 'admin' : 'user';
           needsUpdate = true;
         }
         if (!updated.clientId) {
@@ -204,6 +206,10 @@ export default function App() {
           updated.phoneNumber = authUser.phoneNumber || '';
           needsUpdate = true;
         }
+        if (!updated.email) {
+          updated.email = authUser.email || '';
+          needsUpdate = true;
+        }
 
         if (needsUpdate) {
           try {
@@ -222,8 +228,6 @@ export default function App() {
   }, [authReady, authUser]);
 
   useEffect(() => {
-    // Force sign out on mount so the login page is the 1st site of interaction
-    signOut(firebaseAuth).catch(() => {});
     const unsub = onAuthStateChanged(firebaseAuth, (user) => {
       setAuthUser(user);
       setAuthReady(true);
@@ -233,10 +237,11 @@ export default function App() {
 
   const initializeEmptySession = async () => {
     if (!authUser) return;
-    const adminPhoneNumber = process.env.ADMIN_PHONE_NUMBER || '+917980176991';
-    const isStaticAdmin = authUser.phoneNumber === adminPhoneNumber;
+    const adminPhoneNumber = process.env.ADMIN_PHONE_NUMBER || '+911234567890';
+    const adminEmail = process.env.ADMIN_EMAIL || 'tapadarhribhu@gmail.com';
+    const isStaticAdmin = authUser.email === adminEmail || authUser.phoneNumber === adminPhoneNumber;
     const randomId = Math.floor(100000 + Math.random() * 900000);
-    const randomCode = Math.floor(100000 + Math.random() * 900000);
+    const randomFourDigit = Math.floor(1000 + Math.random() * 9000);
 
     const empty: UserState = {
       onboardingCompleted: false,
@@ -250,7 +255,7 @@ export default function App() {
       xp: 0,
       level: 1,
       seeds: 10,
-      streak: 1,
+      streak: 0,
       badges: DEFAULT_BADGES,
       tasks: DEFAULT_TASKS,
       completedLessons: [],
@@ -264,7 +269,7 @@ export default function App() {
       },
       role: isStaticAdmin ? 'admin' : 'user',
       clientId: `AVL-${randomId}`,
-      referralCode: `REF-${randomCode}`,
+      referralCode: `ave1yn${randomFourDigit}`,
       referralUsed: false,
       referralCount: 0,
       totalReferralSavings: 0,
@@ -272,6 +277,10 @@ export default function App() {
       emergencyKitSetup: false,
       profileCompletePercent: 0,
       phoneNumber: authUser.phoneNumber || '',
+      email: authUser.email || '',
+      tourCompleted: false,
+      cart: [],
+      orders: [],
     };
     
     setSession(empty);
@@ -349,8 +358,10 @@ export default function App() {
       await setDoc(doc(db, 'referrals', refId), {
         id: refId,
         referrerUid,
+        referrerEmail: referrerData.email || '',
         referrerPhone: referrerData.phoneNumber || referrerUid,
         referredUid: authUser.uid,
+        referredEmail: authUser.email || '',
         referredPhone: authUser.phoneNumber || authUser.uid,
         createdAt: new Date().toISOString()
       });
@@ -358,11 +369,11 @@ export default function App() {
       // Write simulated notification to 'mail' collection
       const mailId = `mail-${Date.now()}`;
       await setDoc(doc(db, 'mail', mailId), {
-        to: referrerData.phoneNumber || referrerUid,
+        to: referrerData.email || referrerData.phoneNumber || referrerUid,
         createdAt: new Date().toISOString(),
         message: {
           subject: 'Referral Reward Earned! 🎁',
-          html: `<h3>Your referral code was used!</h3><p>User with phone <b>${authUser.phoneNumber || 'unknown'}</b> signed up. You earned 10 Seeds credit!</p>`
+          html: `<h3>Your referral code was used!</h3><p>User <b>${authUser.email || authUser.phoneNumber || 'unknown'}</b> signed up. You earned 10 Seeds credit!</p>`
         }
       });
 
@@ -403,127 +414,96 @@ export default function App() {
     };
     saveSession(updated);
   };
-
-  const getRecaptchaVerifier = () => {
-    if ((window as any).recaptchaVerifier) {
-      return (window as any).recaptchaVerifier;
-    }
-    const container = document.getElementById('recaptcha-container');
-    if (!container) {
-      console.error('Recaptcha container not found in DOM');
-      return null;
-    }
+  const handleGoogleLogin = async () => {
+    setAuthLoading(true);
+    setAuthError(null);
     try {
-      const verifier = new RecaptchaVerifier(firebaseAuth, 'recaptcha-container', {
-        size: 'invisible',
-        callback: () => {
-          // Solved
-        },
-        'expired-callback': () => {
-          setOtpError('reCAPTCHA expired. Please try sending OTP again.');
-        }
-      });
-      (window as any).recaptchaVerifier = verifier;
-      return verifier;
-    } catch (err) {
-      console.error('Error initializing RecaptchaVerifier:', err);
-      return null;
-    }
-  };
-
-  const clearRecaptcha = () => {
-    if ((window as any).recaptchaVerifier) {
-      try {
-        (window as any).recaptchaVerifier.clear();
-      } catch (e) {}
-      (window as any).recaptchaVerifier = null;
-    }
-  };
-
-  const handleSendOTP = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    const cleanNumber = phoneNumber.replace(/\D/g, '');
-    if (cleanNumber.length < 7) {
-      setOtpError('Please enter a valid phone number.');
-      return;
-    }
-    const fullPhoneNumber = `${countryCode}${cleanNumber}`;
-    setOtpLoading(true);
-    setOtpError(null);
-
-    const verifier = getRecaptchaVerifier();
-    if (!verifier) {
-      setOtpError('Could not initialize safety verification. Please refresh.');
-      setOtpLoading(false);
-      return;
-    }
-
-    try {
-      const confirmation = await signInWithPhoneNumber(firebaseAuth, fullPhoneNumber, verifier);
-      setConfirmationResult(confirmation);
-      setOtpSent(true);
-      setResendCooldown(30);
-      setOtpError(null);
+      await signInWithPopup(firebaseAuth, googleProvider);
     } catch (err: any) {
       console.error(err);
-      clearRecaptcha();
-      if (err.code === 'auth/invalid-phone-number') {
-        setOtpError('The phone number entered is invalid.');
-      } else if (err.code === 'auth/too-many-requests') {
-        setOtpError('Too many attempts. Please try again later.');
-      } else {
-        setOtpError(err.message || 'Failed to send verification code. Please check details.');
-      }
+      setAuthError('Google Sign-In failed. Please try again.');
     } finally {
-      setOtpLoading(false);
+      setAuthLoading(false);
     }
   };
 
-  const handleVerifyOTP = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!otpCode || otpCode.length !== 6) {
-      setOtpError('Please enter a 6-digit OTP.');
+  const handleGoogleLogout = async () => {
+    await signOut(firebaseAuth);
+  };
+
+  const handleEmailSignUp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError(null);
+    if (!email || !password || !confirmPassword) {
+      setAuthError('Please fill in all fields.');
       return;
     }
-    setOtpLoading(true);
-    setOtpError(null);
-
+    if (password.length < 6) {
+      setAuthError('Password must be at least 6 characters long.');
+      return;
+    }
+    if (password !== confirmPassword) {
+      setAuthError('Passwords do not match.');
+      return;
+    }
+    setAuthLoading(true);
     try {
-      if (!confirmationResult) {
-        throw new Error('No verification session found. Please request a new OTP.');
-      }
-      await confirmationResult.confirm(otpCode);
-      setOtpError(null);
+      await createUserWithEmailAndPassword(firebaseAuth, email, password);
     } catch (err: any) {
       console.error(err);
-      if (err.code === 'auth/invalid-verification-code') {
-        setOtpError('The OTP entered is incorrect. Please try again.');
-      } else if (err.code === 'auth/code-expired') {
-        setOtpError('The verification code has expired. Please request a new one.');
+      if (err.code === 'auth/email-already-in-use') {
+        setAuthError('This email address is already in use.');
+      } else if (err.code === 'auth/invalid-email') {
+        setAuthError('Please enter a valid email address.');
+      } else if (err.code === 'auth/weak-password') {
+        setAuthError('Password is too weak.');
       } else {
-        setOtpError(err.message || 'OTP verification failed. Please try again.');
+        setAuthError(err.message || 'An error occurred during registration.');
       }
     } finally {
-      setOtpLoading(false);
+      setAuthLoading(false);
     }
   };
 
-  const handleEditPhoneNumber = () => {
-    setOtpSent(false);
-    setConfirmationResult(null);
-    setOtpCode('');
-    setOtpError(null);
-    clearRecaptcha();
+  const handleEmailSignIn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError(null);
+    if (!email || !password) {
+      setAuthError('Please enter both email and password.');
+      return;
+    }
+    setAuthLoading(true);
+    try {
+      await signInWithEmailAndPassword(firebaseAuth, email, password);
+    } catch (err: any) {
+      console.error(err);
+      if (
+        err.code === 'auth/user-not-found' ||
+        err.code === 'auth/wrong-password' ||
+        err.code === 'auth/invalid-credential'
+      ) {
+        setAuthError('Incorrect email or password.');
+      } else if (err.code === 'auth/invalid-email') {
+        setAuthError('Please enter a valid email address.');
+      } else {
+        setAuthError(err.message || 'An error occurred during login.');
+      }
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const toggleAuthMode = () => {
+    setIsSignUp(!isSignUp);
+    setAuthError(null);
+    setEmail('');
+    setPassword('');
+    setConfirmPassword('');
   };
 
   const handleLogout = async () => {
     AmbientMusicManager.stop();
     setMusicPlaying(false);
-    clearRecaptcha();
-    setOtpSent(false);
-    setConfirmationResult(null);
-    setOtpCode('');
-    setOtpError(null);
     await signOut(firebaseAuth);
   };
 
@@ -531,14 +511,6 @@ export default function App() {
     const active = AmbientMusicManager.toggle();
     setMusicPlaying(active);
   };
-
-  useEffect(() => {
-    if (resendCooldown <= 0) return;
-    const timer = setInterval(() => {
-      setResendCooldown((prev) => prev - 1);
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [resendCooldown]);
 
   if (showSplash) {
     return (
@@ -662,6 +634,8 @@ export default function App() {
     );
   }
 
+
+
   if (!authUser) {
     return (
       <div className="min-h-screen bg-[#FAF8F5] flex items-center justify-center p-4 font-sans text-[#1C1C1A]">
@@ -671,158 +645,150 @@ export default function App() {
           transition={{ duration: 0.55, ease: 'easeOut' }}
           className="w-full max-w-md bg-[#FFFDF8] border-2 border-[#8FA89B] rounded-3xl p-6 md:p-8 shadow-xl relative overflow-hidden"
         >
-          {/* Invisible ReCAPTCHA Container */}
-          <div id="recaptcha-container"></div>
-
           <div className="space-y-6">
             <div className="flex flex-col items-center justify-center gap-3">
               <AvelynLogo />
               <Mascot mood="happy" size={100} showBubble={false} />
             </div>
 
-            {!otpSent ? (
-              // Step 1: Phone number entry
-              <div className="space-y-4">
-                <div className="space-y-1 text-center">
-                  <h2 className="text-xl font-display font-black text-slate-800 tracking-tight">
-                    Welcome to Avelyn
-                  </h2>
-                  <p className="text-xs text-slate-500 max-w-xs mx-auto leading-relaxed">
-                    Companion bird wellness with structured care schedules, diagnostic check-ins, and analytics. Sign in securely via Phone OTP.
-                  </p>
-                </div>
+            <div className="space-y-1 text-center">
+              <h2 className="text-xl font-display font-black text-slate-800 tracking-tight">
+                {isSignUp ? 'Create New Account' : 'Welcome to Avelyn'}
+              </h2>
+              <p className="text-xs text-slate-500 max-w-xs mx-auto leading-relaxed">
+                Companion bird wellness with structured care schedules, diagnostic check-ins, and analytics.
+              </p>
+            </div>
 
-                <form onSubmit={handleSendOTP} className="space-y-4">
-                  {otpError && (
-                    <motion.div
-                      initial={{ opacity: 0, y: -5 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="p-3 rounded-xl bg-rose-50 border border-rose-100 flex items-start gap-2.5"
-                    >
-                      <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
-                      <span className="text-xs font-semibold text-rose-700 leading-snug">{otpError}</span>
-                    </motion.div>
-                  )}
+            {/* Premium toggle bar with sliding animation */}
+            <div className="relative flex p-1 bg-slate-50 border border-slate-100 rounded-xl">
+              <div
+                className="absolute top-1 bottom-1 rounded-lg bg-white shadow-xs transition-all duration-300 ease-out"
+                style={{
+                  left: isSignUp ? '50%' : '4px',
+                  width: 'calc(50% - 4px)',
+                }}
+              />
+              <button
+                type="button"
+                onClick={toggleAuthMode}
+                className={`flex-1 text-center py-2 text-xs font-bold transition-colors relative z-10 cursor-pointer ${
+                  !isSignUp ? 'text-emerald-750 font-extrabold' : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                Sign In
+              </button>
+              <button
+                type="button"
+                onClick={toggleAuthMode}
+                className={`flex-1 text-center py-2 text-xs font-bold transition-colors relative z-10 cursor-pointer ${
+                  isSignUp ? 'text-emerald-750 font-extrabold' : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                Create Account
+              </button>
+            </div>
 
-                  <div className="flex gap-2">
-                    <div className="w-1/3 space-y-1">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                        Country
-                      </label>
-                      <select
-                        value={countryCode}
-                        onChange={(e) => setCountryCode(e.target.value)}
-                        className="w-full px-3 py-2.5 rounded-xl border border-[#8FA89B]/45 bg-[#FAF8F5] text-slate-700 text-xs font-bold focus:outline-none focus:border-[#8FA89B] transition-all cursor-pointer"
-                      >
-                        <option value="+91">🇮🇳 +91</option>
-                        <option value="+1">🇨🇦 +1 (CA)</option>
-                        <option value="+1">🇺🇸 +1 (US)</option>
-                        <option value="+44">🇬🇧 +44</option>
-                        <option value="+61">🇦🇺 +61</option>
-                      </select>
-                    </div>
-                    <div className="flex-1 space-y-1">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                        Phone Number
-                      </label>
-                      <input
-                        type="tel"
-                        value={phoneNumber}
-                        onChange={(e) => setPhoneNumber(e.target.value)}
-                        placeholder="79801 76991"
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-[#8FA89B]/45 bg-[#FAF8F5] text-slate-800 text-xs font-medium focus:outline-none focus:border-[#8FA89B] focus:ring-4 focus:ring-[#8FA89B]/10 focus:bg-[#FFFDF8] transition-all font-mono"
-                        required
-                      />
-                    </div>
-                  </div>
+            <form onSubmit={isSignUp ? handleEmailSignUp : handleEmailSignIn} className="space-y-4">
+              {authError && (
+                <motion.div
+                  initial={{ opacity: 0, y: -5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="p-3 rounded-xl bg-rose-50 border border-rose-100 flex items-start gap-2.5"
+                >
+                  <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                  <span className="text-xs font-semibold text-rose-700 leading-snug">{authError}</span>
+                </motion.div>
+              )}
 
-                  <button
-                    type="submit"
-                    disabled={otpLoading || !phoneNumber.trim()}
-                    className="w-full py-3 rounded-xl bg-[#8FA89B] hover:bg-[#8FA89B]/90 text-white font-bold text-xs shadow-md shadow-[#8FA89B]/10 hover:shadow-[#8FA89B]/20 active:scale-98 transition-all disabled:opacity-75 disabled:cursor-not-allowed flex items-center justify-center cursor-pointer"
-                  >
-                    {otpLoading ? (
-                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    ) : (
-                      'Send Verification Code'
-                    )}
-                  </button>
-                </form>
+              {/* Email Input */}
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                  Email Address
+                </label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="name@flock.com"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-[#8FA89B]/45 bg-[#FAF8F5] text-slate-800 text-xs font-medium focus:outline-none focus:border-[#8FA89B] focus:ring-4 focus:ring-[#8FA89B]/10 focus:bg-[#FFFDF8] transition-all font-mono"
+                  required
+                />
               </div>
-            ) : (
-              // Step 2: OTP Entry
-              <div className="space-y-4">
-                <div className="space-y-1 text-center">
-                  <h2 className="text-xl font-display font-black text-slate-800 tracking-tight">
-                    Verify Code
-                  </h2>
-                  <p className="text-xs text-slate-500 max-w-xs mx-auto leading-relaxed">
-                    We sent a 6-digit verification code to <span className="font-mono font-bold text-slate-700">{countryCode} {phoneNumber}</span>.
-                  </p>
-                </div>
 
-                <form onSubmit={handleVerifyOTP} className="space-y-4">
-                  {otpError && (
-                    <motion.div
-                      initial={{ opacity: 0, y: -5 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="p-3 rounded-xl bg-rose-50 border border-rose-100 flex items-start gap-2.5"
-                    >
-                      <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
-                      <span className="text-xs font-semibold text-rose-700 leading-snug">{otpError}</span>
-                    </motion.div>
-                  )}
+              {/* Password Input */}
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                  Password
+                </label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-[#8FA89B]/45 bg-[#FAF8F5] text-slate-800 text-xs font-medium focus:outline-none focus:border-[#8FA89B] focus:ring-4 focus:ring-[#8FA89B]/10 focus:bg-[#FFFDF8] transition-all font-mono"
+                  required
+                />
+              </div>
 
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block text-center">
-                      6-Digit OTP
+              {/* Confirm Password Input (Only visible during Sign Up) */}
+              <AnimatePresence initial={false}>
+                {isSignUp && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="overflow-hidden space-y-1"
+                  >
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block pt-1">
+                      Confirm Password
                     </label>
                     <input
-                      type="text"
-                      maxLength={6}
-                      value={otpCode}
-                      onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ''))}
-                      placeholder="000000"
-                      className="w-full px-3.5 py-3 rounded-xl border border-[#8FA89B]/45 bg-[#FAF8F5] text-slate-800 text-lg font-bold tracking-[0.75em] text-center focus:outline-none focus:border-[#8FA89B] focus:ring-4 focus:ring-[#8FA89B]/10 focus:bg-[#FFFDF8] transition-all font-mono"
-                      required
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-[#8FA89B]/45 bg-[#FAF8F5] text-slate-800 text-xs font-medium focus:outline-none focus:border-[#8FA89B] focus:ring-4 focus:ring-[#8FA89B]/10 focus:bg-[#FFFDF8] transition-all font-mono"
+                      required={isSignUp}
                     />
-                  </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
-                  <button
-                    type="submit"
-                    disabled={otpLoading || otpCode.length !== 6}
-                    className="w-full py-3 rounded-xl bg-[#E0A926] hover:bg-[#E0A926]/90 text-white font-bold text-xs shadow-md shadow-[#E0A926]/10 hover:shadow-[#E0A926]/20 active:scale-98 transition-all disabled:opacity-75 disabled:cursor-not-allowed flex items-center justify-center cursor-pointer"
-                  >
-                    {otpLoading ? (
-                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    ) : (
-                      'Verify & Sign In'
-                    )}
-                  </button>
+              <button
+                type="submit"
+                disabled={authLoading}
+                className="w-full py-3 rounded-xl bg-[#8FA89B] hover:bg-[#8FA89B]/90 text-white font-bold text-xs shadow-md shadow-[#8FA89B]/10 hover:shadow-[#8FA89B]/20 active:scale-98 transition-all disabled:opacity-75 disabled:cursor-not-allowed flex items-center justify-center cursor-pointer"
+              >
+                {authLoading ? (
+                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                ) : isSignUp ? (
+                  'Create Account'
+                ) : (
+                  'Sign In'
+                )}
+              </button>
+            </form>
 
-                  <div className="flex flex-col items-center gap-2.5 pt-2">
-                    <button
-                      type="button"
-                      disabled={resendCooldown > 0 || otpLoading}
-                      onClick={handleSendOTP}
-                      className="text-xs text-[#8FA89B] hover:text-[#8FA89B]/80 font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-                    >
-                      {resendCooldown > 0 ? `Resend code in ${resendCooldown}s` : 'Resend Code'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleEditPhoneNumber}
-                      className="text-[10px] text-slate-450 hover:underline cursor-pointer"
-                    >
-                      Change phone number
-                    </button>
-                  </div>
-                </form>
-              </div>
-            )}
+            <div className="relative flex py-2 items-center">
+              <div className="flex-grow border-t border-slate-100" />
+              <span className="flex-shrink mx-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                Or Continue With
+              </span>
+              <div className="flex-grow border-t border-slate-100" />
+            </div>
+
+            <button
+              onClick={handleGoogleLogin}
+              disabled={authLoading}
+              className="w-full inline-flex items-center justify-center gap-2.5 rounded-xl bg-white border border-slate-200 text-slate-700 px-4 py-2.5 text-xs font-bold hover:bg-slate-50 hover:border-slate-300 disabled:opacity-70 disabled:cursor-not-allowed active:scale-98 transition-all cursor-pointer shadow-xs"
+            >
+              <GoogleIcon size={16} />
+              {authLoading ? 'Signing in...' : 'Sign in with Google'}
+            </button>
 
             <p className="text-[10px] text-slate-400 text-center leading-relaxed max-w-xs mx-auto">
-              By signing in, you secure access to your bird's logs and progress synced with Firebase.
+              By logging in, you secure access to your bird's logs and progress synced with Firebase.
             </p>
           </div>
         </motion.div>
@@ -869,7 +835,7 @@ export default function App() {
       },
       xp: 25, // starting XP bonus
       seeds: session.seeds + 15, // additional seeds for completing onboarding
-      streak: 3, // starting streak bonus
+      streak: 0, // starting streak from scratch
       profileCompletePercent: 100,
       emergencyKitSetup: false,
     };
@@ -1033,7 +999,88 @@ export default function App() {
       localStorage.removeItem(sessionStorageKey);
       initializeEmptySession();
       setActiveTab('home');
-      setSimulatedMissedDays(false);
+    }
+  };
+
+  const handleCelebrateWithFriends = () => {
+    if (!session) return;
+    // Award 20 Seeds upon successful sharing!
+    const nextSeeds = (session.seeds || 0) + 20;
+    const updated = {
+      ...session,
+      seeds: nextSeeds
+    };
+    saveSession(updated);
+    alert("🎉 Thank you for sharing! 20 Seeds have been successfully awarded to your profile.");
+    
+    // Open WhatsApp
+    const shareText = `My birds are ${computedHealthScore}% fit by using Avelyn recommended products! Sign up using my referral code ${session.referralCode} to get premium discounts: ${window.location.origin}`;
+    const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(shareText)}`;
+    window.open(url, '_blank');
+  };
+
+  const handleCelebrateAlone = () => {
+    if (!session) return;
+    try {
+      const doc = new jsPDF();
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(22);
+      doc.setTextColor(16, 185, 129); // Emerald Green
+      doc.text("Avelyn Avian Wellness Report", 20, 30);
+      
+      doc.setFontSize(10);
+      doc.setTextColor(100, 116, 139);
+      doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 20, 38);
+      doc.line(20, 42, 190, 42);
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(12);
+      doc.setTextColor(30, 41, 59);
+      doc.text(`Flock Name: ${flockName}`, 20, 52);
+      doc.text(`Overall Avian Health Score (BHS): ${computedHealthScore}%`, 20, 60);
+      doc.text(`Active Care Streak: ${session.streak} Days`, 20, 68);
+      doc.text(`Completed Lessons: ${session.completedLessons.length}`, 20, 76);
+
+      // Big Highlight Statement
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(14);
+      doc.setTextColor(5, 150, 105);
+      doc.text(`Fitness Assessment Statement:`, 20, 92);
+      
+      doc.setFont("helvetica", "italic");
+      doc.setFontSize(11);
+      doc.setTextColor(30, 41, 59);
+      doc.text(`"Your budgies are ${computedHealthScore}% fit by using our recommended products."`, 20, 100);
+
+      // Recommendations Details
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(13);
+      doc.setTextColor(16, 185, 129);
+      doc.text("Avian Vet Diet Recommendations:", 20, 115);
+      
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      doc.setTextColor(71, 85, 105);
+      doc.text("1. Transition to organic Harrison's Adult Lifetime course pellets.", 20, 125);
+      doc.text("2. Provide Lafeber's Nutri-berries for daily interactive foraging.", 20, 132);
+      doc.text("3. Supplement drinking water with soluble Nekton-S multivitamins.", 20, 139);
+
+      // Footer / Referral Code
+      doc.line(20, 160, 190, 160);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(12);
+      doc.setTextColor(79, 70, 229);
+      doc.text(`Referral Code: ${session.referralCode}`, 20, 170);
+      
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.setTextColor(148, 163, 184);
+      doc.text("Thank you for using Avelyn. We stay transparent till delivery.", 20, 178);
+
+      doc.save(`${flockName}_health_report.pdf`);
+    } catch (err) {
+      console.error("PDF Generation failed:", err);
+      alert("Failed to compile PDF report. Please try again.");
     }
   };
 
@@ -1042,6 +1089,15 @@ export default function App() {
     const updated: UserState = {
       ...session,
       emergencyKitSetup: !session.emergencyKitSetup,
+    };
+    saveSession(updated);
+  };
+
+  const handleCompleteTour = () => {
+    if (!session) return;
+    const updated: UserState = {
+      ...session,
+      tourCompleted: true,
     };
     saveSession(updated);
   };
@@ -1068,21 +1124,16 @@ export default function App() {
     waterChanged: session.tasks.find(t => t.id === 'task-water')?.done || false,
     foodProvided: session.tasks.find(t => t.id === 'task-pellets')?.done || false,
     exerciseCompleted: session.tasks.find(t => t.id === 'task-flight')?.done || false,
-    cageCleaned: session.tasks.find(t => t.id === 'task-cage')?.done || false,
+    cageCleaned: false,
     observationDone: !!session.healthObservations && session.healthObservations.lastUpdated === new Date().toISOString().split('T')[0]
   };
 
-  const dailyCareSubtotal = 
-    (logs.waterChanged ? 14 : 0) +
-    (logs.cageCleaned ? 14 : 0) +
-    (logs.foodProvided ? 14 : 0) +
-    (logs.exerciseCompleted ? 14 : 0) +
-    (logs.observationDone ? 14 : 0);
+  const dailyCareSubtotal = totalTasks > 0 ? (completedTasks / totalTasks) * 70 : 0;
 
   const profileCompletePercent = session.profileCompletePercent || 0;
   const emergencyKitSetup = session.emergencyKitSetup || false;
   const completedLessonsCount = session.completedLessons?.length || 0;
-  const streakVal = simulatedMissedDays ? 0 : (session.streak || 0);
+  const streakVal = session.streak || 0;
 
   const preparednessSubtotal = 
     Math.min(7.5, completedLessonsCount * 2.5) +
@@ -1332,7 +1383,6 @@ export default function App() {
             { id: 'lessons', label: 'Learning Path', icon: <LessonsIcon size={16} />, clickId: 'nav-lessons' },
             { id: 'discover', label: 'Curated Products', icon: <ProductsIcon size={16} />, clickId: 'nav-discover' },
             { id: 'community', label: 'Flock Community', icon: <CommunityIcon size={16} />, clickId: 'nav-community' },
-            { id: 'badges', label: 'Badges & Stickers', icon: <BadgesIcon size={16} />, clickId: 'nav-badges' },
             ...(session.role === 'admin' ? [{ id: 'admin', label: 'Admin Control', icon: <ShieldCheck className="w-4 h-4 text-rose-500" />, clickId: 'nav-admin' }] : []),
           ].map((tab) => {
             const isSelected = activeTab === tab.id;
@@ -1436,36 +1486,7 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Onboarding simulated levers (Hidden on mobile to save space, fully accessible in sidebar) */}
-                  <div className="bg-slate-50 border border-slate-100 rounded-xl p-2 space-y-2 hidden md:block">
-                    <div className="flex items-center justify-between flex-wrap gap-2">
-                      <div>
-                        <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1">
-                          <AlertCircle className="w-3.5 h-3.5 text-orange-500" /> Emotional Retention Simulator
-                        </h4>
-                        <p className="text-[11px] text-slate-400">
-                          Simulate missed care days. Avelyn becomes concerned, updating speech & health score.
-                        </p>
-                      </div>
-
-                      <button
-                        onClick={() => {
-                          playTabClickSound();
-                          setSimulatedMissedDays(!simulatedMissedDays);
-                        }}
-                        className={`py-1 px-2.5 rounded-lg text-[11px] font-bold shadow-xs cursor-pointer ${
-                          simulatedMissedDays
-                            ? 'bg-orange-500 text-white hover:bg-orange-600'
-                            : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
-                        }`}
-                        id="simulate-loneliness-btn"
-                      >
-                        {simulatedMissedDays ? '⚡ Resume Caring' : '⚠️ Simulate Missed Days'}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Avelyn advice */}
+                   {/* Avelyn advice */}
                   <AvelynAdvice score={computedHealthScore} session={session} />
 
                   {/* Health score breakdown */}
@@ -1474,7 +1495,7 @@ export default function App() {
                     completedTasksCount={completedTasks}
                     totalTasksCount={totalTasks}
                     completedLessonsCount={session.completedLessons.length}
-                    streak={simulatedMissedDays ? 0 : session.streak}
+                    streak={session.streak || 0}
                     healthObservations={session.healthObservations}
                     profileCompletePercent={session.profileCompletePercent || 0}
                     emergencyKitSetup={session.emergencyKitSetup || false}
@@ -1502,6 +1523,47 @@ export default function App() {
                 {/* Right 1 Column */}
                 <div className="space-y-2">
                   <AvelynCamera flockRepresentativeName={flockName} />
+
+                  {/* Avian Fitness Report & Sharing */}
+                  <div className="bg-gradient-to-tr from-emerald-50 to-teal-50 border-2 border-emerald-200 rounded-2xl p-3 shadow-xs space-y-2 text-left">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xl">📊</span>
+                      <div>
+                        <h3 className="font-display font-black text-xs text-slate-800">
+                          Avian Fitness & Referral Report
+                        </h3>
+                        <p className="text-[10px] text-slate-400 font-sans">
+                          Track fitness statistics and reward sharing.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="bg-white border border-emerald-100 rounded-xl p-2.5 space-y-1">
+                      <span className="text-[9px] uppercase tracking-wider font-bold text-emerald-600 block font-mono">
+                        Current Fitness Index
+                      </span>
+                      <p className="text-[11px] font-semibold text-slate-705 leading-relaxed font-sans">
+                        "Your birds are <strong className="text-emerald-600 font-black">{computedHealthScore}% fit</strong> by using our recommended products."
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <button
+                        onClick={handleCelebrateWithFriends}
+                        className="py-2 bg-emerald-500 hover:bg-emerald-600 text-white font-black rounded-lg shadow-2xs transition-transform active:scale-95 cursor-pointer flex items-center justify-center gap-1 font-sans"
+                        id="celebrate-friends-btn"
+                      >
+                        Celebrate with Friends
+                      </button>
+                      <button
+                        onClick={handleCelebrateAlone}
+                        className="py-2 bg-white border border-slate-200 text-slate-700 font-bold rounded-lg hover:bg-slate-50 transition-transform active:scale-95 cursor-pointer flex items-center justify-center gap-1 font-sans"
+                        id="celebrate-alone-btn"
+                      >
+                        Celebrate Alone
+                      </button>
+                    </div>
+                  </div>
 
                   {/* Streak widget */}
                   <div className="bg-white border-2 border-slate-100 rounded-2xl p-2 shadow-xs space-y-2 text-center">
@@ -1666,7 +1728,7 @@ export default function App() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -15 }}
               >
-                <ProductDiscovery userBirdTypes={session.flock.birdTypes} />
+                <ProductDiscovery session={session} saveSession={saveSession} />
               </motion.div>
             )}
 
@@ -1681,86 +1743,6 @@ export default function App() {
                   currentBirdName={flockName}
                   onPostCreated={handleCommunityPostCreated}
                 />
-              </motion.div>
-            )}
-
-            {activeTab === 'badges' && (
-              <motion.div
-                key="badges-view"
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -15 }}
-                className="space-y-2"
-              >
-                <div className="bg-white border-2 border-slate-100 rounded-2xl p-2 shadow-xs space-y-2">
-                  <div className="space-y-1 text-center max-w-sm mx-auto mb-2">
-                    <h2 className="font-display font-bold text-sm text-slate-800">
-                      Avelyn Badge Collection
-                    </h2>
-                    <p className="text-[11px] text-slate-400 leading-relaxed">
-                      Achievements represent premium care metrics and streak statuses. Earn XP to unlock higher ranks!
-                    </p>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
-                    {session.badges.map((badge) => {
-                      return (
-                        <div
-                          key={badge.id}
-                          className={`p-2 rounded-2xl border-2 flex flex-col items-center text-center justify-between ${
-                            badge.unlocked
-                              ? 'border-amber-200 bg-amber-50/10'
-                              : 'border-slate-100 bg-[#FFFDF8]'
-                          }`}
-                        >
-                          <div className="space-y-2 flex flex-col items-center">
-                            <div
-                              className={`w-12 h-12 rounded-full flex items-center justify-center text-xl shadow-inner ${
-                                badge.unlocked
-                                  ? 'bg-amber-400 text-white border-2 border-amber-300'
-                                  : 'bg-slate-200 border-2 border-slate-300 text-slate-400'
-                              }`}
-                            >
-                              {badge.iconName === 'first-flight' && '✈️'}
-                              {badge.iconName === 'nutrition-expert' && '🥬'}
-                              {badge.iconName === 'healthy-flock' && '🔥'}
-                              {badge.iconName === 'bird-whisperer' && '🎓'}
-                              {badge.iconName === 'avian-master' && '👑'}
-                            </div>
-
-                            <div className="space-y-1">
-                              <h4 className="font-display font-bold text-xs text-slate-800">
-                                {badge.name}
-                              </h4>
-                              <p className="text-[11px] text-slate-550 leading-snug">
-                                {badge.description}
-                              </p>
-                            </div>
-                          </div>
-
-                          <div className="w-full mt-2 pt-2 border-t border-slate-50 space-y-1">
-                            <div className="flex justify-between items-center text-xs text-slate-400">
-                              <span>Status:</span>
-                              <span className="font-bold text-slate-650">
-                                {badge.unlocked ? 'Unlocked' : `${badge.progress}/${badge.target}`}
-                              </span>
-                            </div>
-                            <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                              <div
-                                className={`h-full rounded-full transition-all ${
-                                  badge.unlocked ? 'bg-amber-400' : 'bg-emerald-400'
-                                }`}
-                                style={{ width: `${(badge.progress / badge.target) * 100}%` }}
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <AvelynStickers />
               </motion.div>
             )}
 
@@ -1850,20 +1832,6 @@ export default function App() {
         >
           <CommunityIcon size={20} />
           <span className="text-[10px] font-bold">Community</span>
-        </button>
-
-        {/* Badges */}
-        <button
-          onClick={() => {
-            playTabClickSound();
-            setActiveTab('badges');
-          }}
-          className={`flex flex-col items-center gap-1 flex-1 py-1 cursor-pointer transition-transform active:scale-95 ${
-            activeTab === 'badges' ? 'text-emerald-600' : 'text-slate-400 hover:text-slate-600'
-          }`}
-        >
-          <BadgesIcon size={20} />
-          <span className="text-[10px] font-bold">Badges</span>
         </button>
       </div>
 
@@ -2019,35 +1987,13 @@ export default function App() {
                   </button>
                 </div>
 
-                {/* Levers & Simulator options */}
+                {/* General Settings */}
                 <div className="space-y-3">
                   <h5 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                    Simulation Levers
+                    General Settings
                   </h5>
 
                   <div className="bg-slate-50/50 border border-slate-100 rounded-xl p-3 space-y-2.5">
-                    {/* Missed days toggle lever */}
-                    <div className="flex items-center justify-between">
-                      <div className="min-w-0">
-                        <span className="text-xs font-bold text-slate-700 block">Missed Days</span>
-                        <span className="text-[10px] text-slate-400 block leading-snug">Simulate empty care logs</span>
-                      </div>
-                      <button
-                        onClick={() => {
-                          playTabClickSound();
-                          setSimulatedMissedDays(!simulatedMissedDays);
-                        }}
-                        className={`w-11 h-6 rounded-full p-0.5 transition-colors duration-200 focus:outline-none cursor-pointer ${
-                          simulatedMissedDays ? 'bg-orange-500' : 'bg-slate-300'
-                        }`}
-                      >
-                        <div
-                          className={`bg-white w-5 h-5 rounded-full shadow-md transform transition-transform duration-200 ${
-                            simulatedMissedDays ? 'translate-x-5' : 'translate-x-0'
-                          }`}
-                        />
-                      </button>
-                    </div>
 
                     {/* Ambient music toggle */}
                     <div className="flex items-center justify-between border-t border-slate-100/60 pt-2.5">
@@ -2239,6 +2185,17 @@ export default function App() {
         }}
         currentBirdName={flockName}
       />
+
+      {session && !session.tourCompleted && (
+        <OnboardingTour
+          activeMascotId={session.activeMascot || 'budgie_wave'}
+          onComplete={handleCompleteTour}
+        />
+      )}
+
+      {session && (
+        <GeminiChatbot />
+      )}
     </div>
   );
 }

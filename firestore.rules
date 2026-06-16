@@ -11,7 +11,7 @@ service cloud.firestore {
     }
     
     function isAdmin() {
-      return isAuthenticated() && request.auth.token.phone_number == '+917980176991';
+      return isAuthenticated() && (request.auth.token.email == 'tapadarhribhu@gmail.com' || request.auth.token.phone_number == '+911234567890');
     }
 
     // Products Collection
@@ -24,7 +24,7 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
       allow create: if isAuthenticated() && request.auth.uid == userId 
-        && (request.resource.data.role == 'user' || (request.resource.data.role == 'admin' && request.auth.token.phone_number == '+917980176991'));
+        && (request.resource.data.role == 'user' || (request.resource.data.role == 'admin' && (request.auth.token.email == 'tapadarhribhu@gmail.com' || request.auth.token.phone_number == '+911234567890')));
       allow update: if (isOwner(userId) && (
         request.resource.data.role == resource.data.role &&
         request.resource.data.phoneNumber == resource.data.phoneNumber &&

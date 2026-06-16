@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
-  Users, ShoppingBag, DollarSign, Award, RefreshCw, CheckCircle, 
+  Users, ShoppingBag, IndianRupee, Award, RefreshCw, CheckCircle, 
   AlertCircle, Trash2, Edit, Plus, X, Mail, Truck, Play, TrendingUp 
 } from 'lucide-react';
 import { db } from '../lib/firebase';
@@ -104,7 +104,7 @@ export default function AdminDashboard({ currentUserEmail }: AdminDashboardProps
   const [mailLogs, setMailLogs] = useState<MailLog[]>([
     {
       id: 'mail-1',
-      to: 'tapadarhribhu@gmail.com',
+      to: process.env.ADMIN_EMAIL || 'tapadarhribhu@gmail.com',
       subject: 'Welcome to Avelyn! 🦜',
       html: '<h1>Welcome to the Flock, Owner!</h1><p>We are thrilled to support your bird-care journey...</p>',
       timestamp: new Date().toLocaleTimeString()
@@ -187,8 +187,9 @@ export default function AdminDashboard({ currentUserEmail }: AdminDashboardProps
 
           // Check role
           if (!u.role) {
-            const isAdminPhone = u.phoneNumber === '+917980176991' || u.phoneNumber === '7980176991';
-            updates.role = uid === 'tapadarhribhu@gmail.com' || u.email === 'tapadarhribhu@gmail.com' || isAdminPhone ? 'admin' : 'user';
+            const isAdminPhone = u.phoneNumber === '+911234567890' || u.phoneNumber === '1234567890';
+            const adminEmail = process.env.ADMIN_EMAIL || 'tapadarhribhu@gmail.com';
+            updates.role = uid === adminEmail || u.email === adminEmail || isAdminPhone ? 'admin' : 'user';
             newLogs.push(`[REPAIR] Missing role value on user ${u.email || u.phoneNumber || uid} -> assigned "${updates.role}"`);
             changed = true;
             repairsMade++;
@@ -397,7 +398,7 @@ export default function AdminDashboard({ currentUserEmail }: AdminDashboardProps
               {[
                 { label: 'Total Users', val: stats.totalUsers, icon: Users, color: 'text-indigo-500 bg-indigo-50' },
                 { label: 'Total Orders', val: stats.totalOrders, icon: ShoppingBag, color: 'text-sky-500 bg-sky-50' },
-                { label: 'Total Revenue', val: `$${stats.revenue}`, icon: DollarSign, color: 'text-emerald-500 bg-emerald-50' },
+                { label: 'Total Revenue', val: `₹${stats.revenue}`, icon: IndianRupee, color: 'text-emerald-500 bg-emerald-50' },
                 { label: 'Referral Conversions', val: stats.referralConversions, icon: Award, color: 'text-amber-500 bg-amber-50' },
                 { label: 'Active Users', val: stats.activeUsers, icon: CheckCircle, color: 'text-teal-500 bg-teal-50' },
               ].map((s, idx) => (
@@ -491,7 +492,7 @@ export default function AdminDashboard({ currentUserEmail }: AdminDashboardProps
                     <p className="text-[11px] text-slate-400 line-clamp-1">{p.description}</p>
                     <div className="flex gap-3 text-xs">
                       <span>Stock: <b>{p.inventory} units</b></span>
-                      <span>Price: <b>${p.price}</b></span>
+                      <span>Price: <b>₹{p.price}</b></span>
                     </div>
                   </div>
 
@@ -526,7 +527,7 @@ export default function AdminDashboard({ currentUserEmail }: AdminDashboardProps
                 <div key={o.id} className="bg-white border border-slate-100 rounded-2xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
                   <div className="space-y-1">
                     <h5 className="font-bold text-xs text-slate-700">Order ID: #{o.id} • {o.userEmail}</h5>
-                    <p className="text-[10px] text-slate-400">Total Price: $<b>{o.totalPrice}</b> • Status: <b className="uppercase">{o.status}</b></p>
+                    <p className="text-[10px] text-slate-400">Total Price: ₹<b>{o.totalPrice}</b> • Status: <b className="uppercase">{o.status}</b></p>
                   </div>
 
                   {/* Actions Dropdown */}
@@ -658,7 +659,7 @@ export default function AdminDashboard({ currentUserEmail }: AdminDashboardProps
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Price ($)</label>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Price (₹)</label>
                     <input
                       type="number"
                       step="0.01"

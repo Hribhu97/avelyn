@@ -109,12 +109,7 @@ export default function HealthScore({
     observationDone: !!healthObservations
   };
 
-  const dailyCareSubtotal = 
-    (logs.waterChanged ? 14 : 0) +
-    (logs.cageCleaned ? 14 : 0) +
-    (logs.foodProvided ? 14 : 0) +
-    (logs.exerciseCompleted ? 14 : 0) +
-    (logs.observationDone ? 14 : 0);
+  const dailyCareSubtotal = totalTasksCount > 0 ? Math.round((completedTasksCount / totalTasksCount) * 100) : 0;
 
   const preparednessSubtotal = 
     Math.min(7.5, completedLessonsCount * 2.5) +
@@ -188,12 +183,12 @@ export default function HealthScore({
                 Daily Care Index
               </span>
               <span className="text-sm font-display font-bold text-slate-700 mt-1">
-                {dailyCareSubtotal} / 70 Points
+                {dailyCareSubtotal} / 100 Points
               </span>
               <div className="w-full bg-slate-100 h-1.5 rounded-full mt-2 overflow-hidden">
                 <div
                   className="bg-sky-500 h-full rounded-full"
-                  style={{ width: `${(dailyCareSubtotal / 70) * 100}%` }}
+                  style={{ width: `${(dailyCareSubtotal / 100) * 100}%` }}
                 />
               </div>
             </div>

@@ -112,6 +112,16 @@ export interface UserState {
   goals?: string[];
   createdAt?: string;
   lastLogin?: string;
+  tourCompleted?: boolean;
+  cart?: { productId: string; quantity: number }[];
+  orders?: {
+    id: string;
+    date: string;
+    items: { productId: string; quantity: number }[];
+    total: number;
+    status: 'ordered' | 'shipped' | 'out_for_delivery' | 'delivered';
+    address: string;
+  }[];
 }
 
 export interface MascotPreset {

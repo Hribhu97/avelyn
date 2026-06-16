@@ -15,6 +15,8 @@ export default defineConfig(({ mode }) => {
     },
     define: {
       'process.env.ADMIN_PHONE_NUMBER': JSON.stringify(env.ADMIN_PHONE_NUMBER || ''),
+      'process.env.ADMIN_EMAIL': JSON.stringify(env.ADMIN_EMAIL || ''),
+      'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY || ''),
     },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
