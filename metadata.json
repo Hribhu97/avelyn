@@ -1,0 +1,6 @@
+{
+  "name": "Avelyn",
+  "description": "A premium bird-care ecosystem bringing a gamified, emotionally interactive experience for passionate bird parents.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
