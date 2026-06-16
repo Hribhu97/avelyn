@@ -166,68 +166,101 @@ export default function App() {
       return;
     }
 
+    // Try to load from localStorage first for immediate responsiveness
+    let localSession: UserState | null = null;
+    if (sessionStorageKey) {
+      const stored = localStorage.getItem(sessionStorageKey);
+      if (stored) {
+        try {
+          localSession = JSON.parse(stored) as UserState;
+          setSession(localSession);
+        } catch (e) {
+          console.error("Error parsing stored session:", e);
+        }
+      }
+    }
+
     const userRef = doc(db, 'users', authUser.uid);
     const unsub = onSnapshot(userRef, async (docSnap) => {
+      // Load current localStorage state to compare
+      let latestLocal: UserState | null = null;
+      if (sessionStorageKey) {
+        const stored = localStorage.getItem(sessionStorageKey);
+        if (stored) {
+          try {
+            latestLocal = JSON.parse(stored) as UserState;
+          } catch (e) {}
+        }
+      }
+
       if (docSnap.exists()) {
         const data = docSnap.data() as UserState;
-        let needsUpdate = false;
-        const updated = { ...data };
+        
+        // Prioritize local session if it says onboardingCompleted is true, but server says false (rollback protection)
+        if (latestLocal?.onboardingCompleted && !data.onboardingCompleted) {
+          console.warn("Server state shows onboarding incomplete but local storage shows complete. Using local storage session to prevent rollback.");
+          setSession(latestLocal);
+          return;
+        }
 
+        const updated = { ...data };
         const adminPhoneNumber = process.env.ADMIN_PHONE_NUMBER || '+911234567890';
         if (!updated.role) {
           const adminEmail = process.env.ADMIN_EMAIL || 'tapadarhribhu@gmail.com';
           const isAdminEmail = authUser.email === adminEmail;
           const isAdminPhone = authUser.phoneNumber === adminPhoneNumber;
           updated.role = isAdminEmail || isAdminPhone ? 'admin' : 'user';
-          needsUpdate = true;
         }
         if (!updated.clientId) {
           const randomId = Math.floor(100000 + Math.random() * 900000);
           updated.clientId = `AVL-${randomId}`;
-          needsUpdate = true;
         }
         if (!updated.referralCode) {
           const randomCode = Math.floor(100000 + Math.random() * 900000);
           updated.referralCode = `REF-${randomCode}`;
-          needsUpdate = true;
         }
         if (updated.referralUsed === undefined) {
           updated.referralUsed = false;
           updated.referralCount = 0;
           updated.totalReferralSavings = 0;
           updated.totalReferralRewards = 0;
-          needsUpdate = true;
         }
         if (updated.emergencyKitSetup === undefined) {
           updated.emergencyKitSetup = false;
-          needsUpdate = true;
         }
         if (updated.profileCompletePercent === undefined) {
           updated.profileCompletePercent = 0;
-          needsUpdate = true;
         }
         if (!updated.phoneNumber) {
           updated.phoneNumber = authUser.phoneNumber || '';
-          needsUpdate = true;
         }
         if (!updated.email) {
           updated.email = authUser.email || '';
-          needsUpdate = true;
         }
         if (!updated.createdAt) {
           updated.createdAt = new Date().toISOString();
-          needsUpdate = true;
         }
 
-        if (needsUpdate) {
-          try {
-            await setDoc(userRef, updated);
-          } catch (err) {
-            console.error("Error auto-fixing user record on snapshot:", err);
-          }
+        // Sync to localStorage
+        if (sessionStorageKey) {
+          localStorage.setItem(sessionStorageKey, JSON.stringify(updated));
         }
         setSession(updated);
       } else {
+        // Document does not exist in Firestore.
+        // Check if we already have a session loaded (either empty or complete) to prevent infinite initialization loop
+        if (latestLocal) {
+          if (latestLocal.onboardingCompleted) {
+            console.warn("Firestore document does not exist but local storage session shows onboarding completed. Keeping local session.");
+            setSession(latestLocal);
+            return;
+          }
+          if (latestLocal.clientId) {
+            setSession(latestLocal);
+            return;
+          }
+        }
+
         await initializeEmptySession();
       }
     });
@@ -293,6 +326,9 @@ export default function App() {
     };
     
     setSession(empty);
+    if (sessionStorageKey) {
+      localStorage.setItem(sessionStorageKey, JSON.stringify(empty));
+    }
     try {
       await setDoc(doc(db, 'users', authUser.uid), empty);
     } catch (err) {
@@ -304,13 +340,13 @@ export default function App() {
   const saveSession = async (updated: UserState) => {
     if (!authUser) return;
     setSession(updated);
+    if (sessionStorageKey) {
+      localStorage.setItem(sessionStorageKey, JSON.stringify(updated));
+    }
     try {
       await setDoc(doc(db, 'users', authUser.uid), updated);
     } catch (err) {
-      console.error("Error writing to Firestore, falling back to local storage:", err);
-      if (sessionStorageKey) {
-        localStorage.setItem(sessionStorageKey, JSON.stringify(updated));
-      }
+      console.error("Error writing to Firestore:", err);
     }
   };
 
