@@ -2,168 +2,56 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { BirdType, FlockInfo } from '../types';
 import Mascot from './Mascot';
-import { Check, ArrowRight, ArrowLeft } from 'lucide-react';
+import { Check, ArrowRight, ArrowLeft, Plus, Minus, Gift } from 'lucide-react';
 
 interface OnboardingProps {
-  onComplete: (flock: FlockInfo) => void;
+  clientId: string;
+  referralCode: string;
+  onApplyReferral: (code: string) => Promise<{ success: boolean; message: string }>;
+  onComplete: (data: {
+    birdType: BirdType[];
+    birdCount: number;
+    experienceLevel: 'Beginner' | 'Intermediate' | 'Advanced';
+    goals: string[];
+    referralCodeEntered?: string;
+  }) => void;
 }
 
-export default function Onboarding({ onComplete }: OnboardingProps) {
-  const [step, setStep] = useState(1);
+export default function Onboarding({
+  clientId,
+  referralCode,
+  onApplyReferral,
+  onComplete
+}: OnboardingProps) {
+  const [step, setStep] = useState(1); // 1 to 6
   const [selectedBirds, setSelectedBirds] = useState<BirdType[]>([]);
   const [birdCount, setBirdCount] = useState<number>(1);
-  const [ageGroup, setAgeGroup] = useState<string>('young');
-  const [experience, setExperience] = useState<'beginner' | 'experienced'>('beginner');
-  const [focusAreas, setFocusAreas] = useState<string[]>([]);
+  const [experience, setExperience] = useState<'Beginner' | 'Intermediate' | 'Advanced'>('Beginner');
+  const [selectedGoals, setSelectedGoals] = useState<string[]>([]);
+  const [referralInput, setReferralInput] = useState('');
+  const [referralMessage, setReferralMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [applyingReferral, setApplyingReferral] = useState(false);
 
   // Bird Options metadata
   const birdOptions = [
-    {
-      id: 'budgie' as BirdType,
-      name: 'Budgie',
-      color: 'bg-emerald-50 border-emerald-300 hover:bg-emerald-100',
-      textColor: 'text-emerald-700',
-      badgeColor: 'bg-emerald-500',
-      // Dynamic Mini SVG budgie
-      svg: (
-        <svg viewBox="0 0 100 100" className="w-16 h-16">
-          <circle cx="50" cy="50" r="40" fill="#E6EE9C" />
-          <circle cx="50" cy="50" r="28" fill="#D4E157" />
-          <path d="M42 42 C45 35, 55 35, 58 42" stroke="#1E293B" strokeWidth="3" fill="none" />
-          <circle cx="40" cy="50" r="4.5" fill="#1E293B" />
-          <circle cx="60" cy="50" r="4.5" fill="#1E293B" />
-          <polygon points="46,55 54,55 50,70" fill="#FFB74D" stroke="#1E293B" strokeWidth="2" />
-          <ellipse cx="34" cy="58" rx="5" ry="3" fill="#42A5F5" />
-          <ellipse cx="66" cy="58" rx="5" ry="3" fill="#42A5F5" />
-        </svg>
-      ),
-    },
-    {
-      id: 'lovebird' as BirdType,
-      name: 'Lovebird',
-      color: 'bg-orange-50 border-orange-300 hover:bg-orange-100',
-      textColor: 'text-orange-700',
-      badgeColor: 'bg-orange-500',
-      svg: (
-        <svg viewBox="0 0 100 100" className="w-16 h-16">
-          <circle cx="50" cy="50" r="40" fill="#FFCC80" />
-          <circle cx="50" cy="50" r="28" fill="#81C784" />
-          <path d="M35 48 Q50 30 65 48" fill="#FF8A65" />
-          <circle cx="40" cy="54" r="4.5" fill="#1E293B" />
-          <circle cx="60" cy="54" r="4.5" fill="#1E293B" />
-          <polygon points="46,58 54,58 50,72" fill="#E64A19" />
-          <ellipse cx="35" cy="62" rx="4" ry="2.5" fill="#FF7043" />
-          <ellipse cx="65" cy="62" rx="4" ry="2.5" fill="#FF7043" />
-        </svg>
-      ),
-    },
-    {
-      id: 'cockatiel' as BirdType,
-      name: 'Cockatiel',
-      color: 'bg-yellow-50 border-yellow-300 hover:bg-yellow-100',
-      textColor: 'text-yellow-700',
-      badgeColor: 'bg-yellow-500',
-      svg: (
-        <svg viewBox="0 0 100 100" className="w-16 h-16">
-          <circle cx="50" cy="50" r="40" fill="#ECEFF1" />
-          {/* Yellow Cheek & Crest */}
-          <path d="M48 24 Q30 5 45 10 Q50 18 52 24" fill="#FFD54A" stroke="#1E293B" strokeWidth="2" />
-          <circle cx="50" cy="54" r="28" fill="#CFD8DC" />
-          <circle cx="40" cy="54" r="4.5" fill="#1E293B" />
-          <circle cx="60" cy="54" r="4.5" fill="#1E293B" />
-          <polygon points="45,58 55,58 50,70" fill="#90A4AE" stroke="#1E293B" strokeWidth="2" />
-          <ellipse cx="36" cy="62" rx="6" ry="5" fill="#FF7043" />
-          <ellipse cx="64" cy="62" rx="6" ry="5" fill="#FF7043" />
-        </svg>
-      ),
-    },
-    {
-      id: 'ringneck' as BirdType,
-      name: 'Indian Ringneck',
-      color: 'bg-teal-50 border-teal-300 hover:bg-teal-100',
-      textColor: 'text-teal-700',
-      badgeColor: 'bg-teal-500',
-      svg: (
-        <svg viewBox="0 0 100 100" className="w-16 h-16">
-          <circle cx="50" cy="50" r="40" fill="#A7FFEB" />
-          <circle cx="50" cy="50" r="28" fill="#26A69A" />
-          {/* Black & pink neck collar */}
-          <path d="M40 70 Q50 78 60 70" stroke="#1E293B" strokeWidth="4" fill="none" />
-          <path d="M41 71 Q50 77 59 71" stroke="#FF8A80" strokeWidth="2.5" fill="none" />
-          <circle cx="41" cy="52" r="4" fill="#1E293B" />
-          <circle cx="59" cy="52" r="4" fill="#1E293B" />
-          <path d="M44 56 Q50 48 56 56 Q50 72 44 56 Z" fill="#E53935" stroke="#1E293B" strokeWidth="2" />
-          <ellipse cx="35" cy="59" rx="4" ry="2.5" fill="#FF8A65" />
-          <ellipse cx="65" cy="59" rx="4" ry="2.5" fill="#FF8A65" />
-        </svg>
-      ),
-    },
-    {
-      id: 'africangrey' as BirdType,
-      name: 'African Grey',
-      color: 'bg-slate-100 border-slate-300 hover:bg-slate-200',
-      textColor: 'text-slate-800',
-      badgeColor: 'bg-slate-500',
-      svg: (
-        <svg viewBox="0 0 100 100" className="w-16 h-16">
-          <circle cx="50" cy="50" r="40" fill="#ECEFF1" />
-          <circle cx="50" cy="50" r="28" fill="#78909C" />
-          {/* Red feather accents */}
-          <path d="M40 70 Q50 78 60 70" fill="#EF5350" />
-          <circle cx="40" cy="52" r="4.5" fill="#1E293B" />
-          <circle cx="59" cy="52" r="4.5" fill="#1E293B" />
-          {/* Sharp grey beak */}
-          <path d="M46 56 Q50 48 54 56 Q50 74 46 56 Z" fill="#37474F" stroke="#1E293B" strokeWidth="2" />
-        </svg>
-      ),
-    },
-    {
-      id: 'macaw' as BirdType,
-      name: 'Macaw',
-      color: 'bg-red-50 border-red-300 hover:bg-red-100',
-      textColor: 'text-red-700',
-      badgeColor: 'bg-red-500',
-      svg: (
-        <svg viewBox="0 0 100 100" className="w-16 h-16">
-          <circle cx="50" cy="50" r="40" fill="#FFCDD2" />
-          {/* Splendid face colors */}
-          <path d="M22 50 C25 22, 75 22, 78 50 C60 55, 40 55, 22 50 Z" fill="#EF5350" />
-          <circle cx="50" cy="50" r="24" fill="#1E88E5" />
-          <circle cx="42" cy="48" r="4.5" fill="#1E293B" />
-          <circle cx="58" cy="48" r="4.5" fill="#1E293B" />
-          {/* Giant Macaw Beak */}
-          <path d="M45 54 Q50 44 55 54 Q50 75 45 54 Z" fill="#ECEFF1" stroke="#1E293B" strokeWidth="2" />
-          <path d="M47 54 Q50 44 53 54 Q50 63 47 54 Z" fill="#263238" />
-        </svg>
-      ),
-    },
-    {
-      id: 'other' as BirdType,
-      name: 'Other Bird',
-      color: 'bg-indigo-50 border-indigo-300 hover:bg-indigo-100',
-      textColor: 'text-indigo-700',
-      badgeColor: 'bg-indigo-500',
-      svg: (
-        <svg viewBox="0 0 100 100" className="w-16 h-16">
-          <circle cx="50" cy="50" r="40" fill="#D1C4E9" />
-          <circle cx="50" cy="50" r="28" fill="#9575CD" />
-          <circle cx="41" cy="50" r="4" fill="#1E293B" />
-          <circle cx="59" cy="50" r="4" fill="#1E293B" />
-          <polygon points="46,55 54,55 50,66" fill="#F48FB1" stroke="#1E293B" strokeWidth="1.5" />
-          <path d="M42 38 Q50 32 58 38" stroke="#1E293B" strokeWidth="2.5" fill="none" />
-        </svg>
-      ),
-    },
+    { id: 'budgie' as BirdType, name: 'Budgie', emoji: '🦜' },
+    { id: 'cockatiel' as BirdType, name: 'Cockatiel', emoji: '🐤' },
+    { id: 'lovebird' as BirdType, name: 'Lovebird', emoji: '❤️' },
+    { id: 'conure' as BirdType, name: 'Conure', emoji: '🟢' },
+    { id: 'africangrey' as BirdType, name: 'African Grey', emoji: '🐦' },
+    { id: 'macaw' as BirdType, name: 'Macaw', emoji: '🔴' },
+    { id: 'finch' as BirdType, name: 'Finch', emoji: '🌾' },
+    { id: 'canary' as BirdType, name: 'Canary', emoji: '💛' },
+    { id: 'other' as BirdType, name: 'Other', emoji: '❓' }
   ];
 
   // Goals metadata
   const goalOptions = [
-    { id: 'nutrition', label: 'Better nutrition', desc: 'Find perfect bird food seeds, pellets & chop recipes.' },
-    { id: 'lifespan', label: 'Longer lifespan', desc: 'Establish clinical care habits that prevent illness.' },
-    { id: 'breeding', label: 'Breeding support', desc: 'Expert guidance on nests, eggs, and chick rearing.' },
-    { id: 'vet', label: 'Veterinary care', desc: 'Connect to avian vets and understand symptom red flags.' },
-    { id: 'training', label: 'Training & Speech', desc: 'Unravel step-up training, target training, and flight.' },
-    { id: 'happiness', label: 'Bird happiness', desc: 'Introduce bird-safe foraging toys, baths, and social play.' },
+    { id: 'nutrition', label: 'Better Nutrition', desc: 'Find perfect bird food seeds, pellets & chop recipes.' },
+    { id: 'training', label: 'Training', desc: 'Unravel step-up training, target training, and flight.' },
+    { id: 'breeding', label: 'Breeding', desc: 'Expert guidance on nests, eggs, and chick rearing.' },
+    { id: 'health', label: 'Health Monitoring', desc: 'Connect to avian vets and understand symptom red flags.' },
+    { id: 'emergency', label: 'Emergency Preparedness', desc: 'Prepare emergency kits and clinical safety standards.' }
   ];
 
   const toggleBirdSelected = (id: BirdType) => {
@@ -172,22 +60,22 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
     );
   };
 
-  const toggleFocusArea = (id: string) => {
-    setFocusAreas((prev) =>
-      prev.includes(id) ? prev.filter((a) => a !== id) : [...prev, id]
+  const toggleGoal = (id: string) => {
+    setSelectedGoals((prev) =>
+      prev.includes(id) ? prev.filter((g) => g !== id) : [...prev, id]
     );
   };
 
   const handleNext = () => {
-    if (step < 4) {
+    if (step < 6) {
       setStep((p) => p + 1);
     } else {
       onComplete({
-        birdTypes: selectedBirds.length ? selectedBirds : ['other'],
-        count: birdCount,
-        ageGroup,
+        birdType: selectedBirds.length ? selectedBirds : ['other'],
+        birdCount,
         experienceLevel: experience,
-        focusArea: focusAreas.length ? focusAreas : ['nutrition', 'happiness'],
+        goals: selectedGoals.length ? selectedGoals : ['nutrition'],
+        referralCodeEntered: referralMessage?.type === 'success' ? referralInput : undefined
       });
     }
   };
@@ -196,224 +84,184 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
     if (step > 1) setStep((p) => p - 1);
   };
 
+  const handleApplyCode = async () => {
+    if (!referralInput.trim()) return;
+    setApplyingReferral(true);
+    setReferralMessage(null);
+    try {
+      const res = await onApplyReferral(referralInput);
+      if (res.success) {
+        setReferralMessage({ type: 'success', text: res.message });
+      } else {
+        setReferralMessage({ type: 'error', text: res.message });
+      }
+    } catch (e: any) {
+      setReferralMessage({ type: 'error', text: 'Error applying code.' });
+    } finally {
+      setApplyingReferral(false);
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-[#FFFDF8] flex flex-col items-center justify-center p-2 font-sans">
+    <div className="min-h-screen bg-[#FAF8F5] flex flex-col items-center justify-center p-4 font-sans text-[#1C1C1A]">
       {/* Container Card */}
-      <div className="w-full max-w-md bg-white border-2 border-emerald-500 rounded-xl shadow-md overflow-hidden p-3 relative">
-        {/* Onboarding Progress Bar */}
-        <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden mb-4 flex border border-slate-200">
+      <div className="w-full max-w-md bg-[#FFFDF8] border-2 border-[#8FA89B] rounded-3xl shadow-xl overflow-hidden p-6 relative">
+        {/* Progress Bar */}
+        <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden mb-6 flex border border-slate-200">
           <motion.div
-            className="bg-emerald-500 h-full rounded-full"
-            initial={{ width: '25%' }}
-            animate={{ width: `${step * 25}%` }}
+            className="bg-[#8FA89B] h-full rounded-full"
+            initial={{ width: '16.66%' }}
+            animate={{ width: `${(step / 6) * 100}%` }}
             transition={{ duration: 0.3 }}
           />
         </div>
 
-        {/* Step Views */}
-        <div className="min-h-[300px] flex flex-col justify-between">
+        <div className="min-h-[340px] flex flex-col justify-between">
           <AnimatePresence mode="wait">
+            {/* Step 1: Welcome */}
             {step === 1 && (
               <motion.div
                 key="step1"
-                initial={{ opacity: 0, x: 15 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -15 }}
-                className="space-y-3"
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -15 }}
+                className="space-y-4 text-center py-4"
               >
-                <div className="text-center space-y-0.5">
-                  <h1 className="font-display font-bold text-sm text-slate-800">
-                    What birds do you have?
-                  </h1>
-                  <p className="text-[11px] text-slate-500">
-                    Select all that apply. This helps Avelyn tailor lessons and recommendations.
-                  </p>
+                <div className="mx-auto flex justify-center">
+                  <Mascot mood="happy" size={120} showBubble={false} />
                 </div>
-
-                <div className="grid grid-cols-2 gap-2 max-h-[220px] overflow-y-auto pr-0.5">
-                  {birdOptions.map((opt) => {
-                    const isSelected = selectedBirds.includes(opt.id);
-                    return (
-                      <motion.button
-                        key={opt.id}
-                        onClick={() => toggleBirdSelected(opt.id)}
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
-                        className={`flex flex-col items-center p-2 rounded-xl border-2 transition-colors text-center cursor-pointer relative ${
-                          isSelected
-                            ? 'border-emerald-500 bg-emerald-50/70 shadow-xs'
-                            : 'border-slate-200 bg-[#FFFDF8]'
-                        }`}
-                        id={`bird-opt-${opt.id}`}
-                      >
-                        {isSelected && (
-                          <div className="absolute top-1.5 right-1.5 w-4.5 h-4.5 bg-emerald-500 text-white rounded-full flex items-center justify-center">
-                            <Check className="w-3 h-3 stroke-[3]" />
-                          </div>
-                        )}
-                        <div className="mb-1">{opt.svg}</div>
-                        <span className="font-display font-semibold text-[11px] text-slate-700">
-                          {opt.name}
-                        </span>
-                      </motion.button>
-                    );
-                  })}
+                <div className="space-y-2">
+                  <h1 className="font-display font-black text-2xl text-[#E0A926] tracking-tight leading-tight">
+                    Welcome to Avelyn!
+                  </h1>
+                  <p className="text-xs text-slate-500 max-w-xs mx-auto leading-relaxed">
+                    Your companion bird wellness journey begins here. Let's configure your custom flock profile to tailor checklists, recommendations, and preparedness scores.
+                  </p>
                 </div>
               </motion.div>
             )}
 
+            {/* Step 2: Bird Type */}
             {step === 2 && (
               <motion.div
                 key="step2"
                 initial={{ opacity: 0, x: 15 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -15 }}
-                className="space-y-3"
+                className="space-y-4"
               >
-                <div className="text-center space-y-0.5">
-                  <h1 className="font-display font-bold text-sm text-slate-800">
-                    Tell us about your flock
+                <div className="text-center space-y-1">
+                  <h1 className="font-display font-black text-lg text-slate-800">
+                    What birds do you own?
                   </h1>
-                  <p className="text-[11px] text-slate-500">
-                    Knowing your flock details ensures highly specific product discovery.
+                  <p className="text-xs text-slate-400">
+                    Select all that apply.
                   </p>
                 </div>
 
-                <div className="space-y-3 max-w-sm mx-auto py-1">
-                  {/* Option 1: Number of Birds */}
-                  <div className="space-y-1">
-                    <label className="block text-xs font-semibold text-slate-700">
-                      How many feathered friends are in your life?
-                    </label>
-                    <div className="flex items-center gap-2 bg-[#FFFDF8] border border-slate-200 rounded-xl p-1.5 justify-between">
+                <div className="grid grid-cols-3 gap-2 max-h-[200px] overflow-y-auto pr-1">
+                  {birdOptions.map((opt) => {
+                    const isSelected = selectedBirds.includes(opt.id);
+                    return (
                       <button
-                        onClick={() => setBirdCount(Math.max(1, birdCount - 1))}
-                        className="w-8 h-8 bg-white hover:bg-slate-100 rounded-lg font-bold flex items-center justify-center border border-slate-200 text-slate-700 text-sm"
-                      >
-                        -
-                      </button>
-                      <span className="text-sm font-display font-bold text-emerald-600">
-                        {birdCount} {birdCount === 1 ? 'Bird' : 'Birds'}
-                      </span>
-                      <button
-                        onClick={() => setBirdCount(birdCount + 1)}
-                        className="w-8 h-8 bg-white hover:bg-slate-100 rounded-lg font-bold flex items-center justify-center border border-slate-200 text-slate-700 text-sm"
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Option 2: Age Group */}
-                  <div className="space-y-1">
-                    <label className="block text-xs font-semibold text-slate-700">
-                      What is the general age group?
-                    </label>
-                    <div className="grid grid-cols-4 gap-1.5">
-                      {[
-                        { id: 'baby', label: 'Weaning' },
-                        { id: 'young', label: 'Young' },
-                        { id: 'mature', label: 'Mature' },
-                        { id: 'senior', label: 'Senior' },
-                      ].map((item) => (
-                        <button
-                          key={item.id}
-                          onClick={() => setAgeGroup(item.id)}
-                          className={`p-2 text-[10px] font-semibold rounded-lg border text-center transition-all ${
-                            ageGroup === item.id
-                              ? 'border-emerald-500 bg-emerald-55 text-emerald-800 font-bold'
-                              : 'border-slate-200 bg-white text-slate-600'
-                          }`}
-                        >
-                          {item.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Option 3: Parent Experience */}
-                  <div className="space-y-1">
-                    <label className="block text-xs font-semibold text-slate-700">
-                      Your bird-keeping experience level:
-                    </label>
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        onClick={() => setExperience('beginner')}
-                        className={`p-2 rounded-lg border text-left transition-all ${
-                          experience === 'beginner'
-                            ? 'border-emerald-500 bg-emerald-50'
-                            : 'border-slate-200 bg-white'
+                        key={opt.id}
+                        onClick={() => toggleBirdSelected(opt.id)}
+                        className={`p-3 rounded-2xl border-2 text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-1.5 ${
+                          isSelected
+                            ? 'border-[#8FA89B] bg-[#8FA89B]/10 font-bold'
+                            : 'border-slate-100 bg-[#FFFDF8] hover:border-[#8FA89B]/55'
                         }`}
                       >
-                        <h4 className="font-bold text-xs text-slate-800">Beginner</h4>
-                        <p className="text-[10px] text-slate-500 mt-0.5">
-                          Filled with pure excitement!
-                        </p>
+                        <span className="text-xl">{opt.emoji}</span>
+                        <span className="text-[10px] uppercase font-bold tracking-wider text-slate-700">{opt.name}</span>
                       </button>
-
-                      <button
-                        onClick={() => setExperience('experienced')}
-                        className={`p-2 rounded-lg border text-left transition-all ${
-                          experience === 'experienced'
-                            ? 'border-emerald-500 bg-emerald-50'
-                            : 'border-slate-200 bg-white'
-                        }`}
-                      >
-                        <h4 className="font-bold text-xs text-slate-800">Advanced</h4>
-                        <p className="text-[10px] text-slate-500 mt-0.5">
-                          Focused on specialized care.
-                        </p>
-                      </button>
-                    </div>
-                  </div>
+                    );
+                  })}
                 </div>
               </motion.div>
             )}
 
+            {/* Step 3: Number of Birds */}
             {step === 3 && (
               <motion.div
                 key="step3"
                 initial={{ opacity: 0, x: 15 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -15 }}
-                className="space-y-3"
+                className="space-y-6 py-4"
               >
-                <div className="text-center space-y-0.5">
-                  <h1 className="font-display font-bold text-sm text-slate-800">
-                    What matters most?
+                <div className="text-center space-y-1">
+                  <h1 className="font-display font-black text-lg text-slate-800">
+                    Number of Birds
                   </h1>
-                  <p className="text-[11px] text-slate-500">
-                    Choose the topics you care most about. You earn bonus seed-points!
+                  <p className="text-xs text-slate-400">
+                    How many feathered friends are in your flock?
                   </p>
                 </div>
 
-                <div className="grid grid-cols-1 gap-2 max-h-[220px] overflow-y-auto pr-0.5">
-                  {goalOptions.map((opt) => {
-                    const isSelected = focusAreas.includes(opt.id);
+                <div className="flex items-center justify-center gap-6 max-w-xs mx-auto">
+                  <button
+                    onClick={() => setBirdCount(Math.max(1, birdCount - 1))}
+                    className="w-12 h-12 rounded-full border-2 border-slate-200 hover:border-[#8FA89B] flex items-center justify-center font-bold text-lg text-slate-600 bg-white shadow-sm transition-all"
+                  >
+                    <Minus className="w-5 h-5" />
+                  </button>
+                  <span className="text-3xl font-display font-black text-[#E0A926] w-16 text-center">
+                    {birdCount}
+                  </span>
+                  <button
+                    onClick={() => setBirdCount(birdCount + 1)}
+                    className="w-12 h-12 rounded-full border-2 border-slate-200 hover:border-[#8FA89B] flex items-center justify-center font-bold text-lg text-slate-600 bg-white shadow-sm transition-all"
+                  >
+                    <Plus className="w-5 h-5" />
+                  </button>
+                </div>
+              </motion.div>
+            )}
+
+            {/* Step 4: Experience Level */}
+            {step === 4 && (
+              <motion.div
+                key="step4"
+                initial={{ opacity: 0, x: 15 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -15 }}
+                className="space-y-4"
+              >
+                <div className="text-center space-y-1">
+                  <h1 className="font-display font-black text-lg text-slate-800">
+                    Experience Level
+                  </h1>
+                  <p className="text-xs text-slate-400">
+                    Select your current bird-keeping experience level.
+                  </p>
+                </div>
+
+                <div className="flex flex-col gap-2.5 max-w-sm mx-auto">
+                  {['Beginner', 'Intermediate', 'Advanced'].map((lvl) => {
+                    const isSelected = experience === lvl;
                     return (
                       <button
-                        key={opt.id}
-                        onClick={() => toggleFocusArea(opt.id)}
-                        className={`p-2 rounded-xl border text-left flex items-center justify-between transition-all cursor-pointer ${
+                        key={lvl}
+                        onClick={() => setExperience(lvl as any)}
+                        className={`p-3.5 rounded-2xl border-2 text-left transition-all cursor-pointer flex justify-between items-center ${
                           isSelected
-                            ? 'border-emerald-500 bg-emerald-50'
-                            : 'border-slate-200 bg-[#FFFDF8]'
+                            ? 'border-[#8FA89B] bg-[#8FA89B]/10 font-bold'
+                            : 'border-slate-150 bg-[#FFFDF8] hover:border-[#8FA89B]/50'
                         }`}
                       >
                         <div>
-                          <h4 className="font-display font-semibold text-xs text-slate-800">
-                            {opt.label}
-                          </h4>
-                          <p className="text-[10px] text-slate-500 mt-0.5">{opt.desc}</p>
+                          <h4 className="font-display font-bold text-xs text-slate-800">{lvl}</h4>
+                          <p className="text-[10px] text-slate-400 mt-0.5">
+                            {lvl === 'Beginner' && 'Learning core nutrition & safety.'}
+                            {lvl === 'Intermediate' && 'Expanding on routines & flight training.'}
+                            {lvl === 'Advanced' && 'Focused on detailed health & breeding support.'}
+                          </p>
                         </div>
-                        <div
-                          className={`w-4.5 h-4.5 rounded-full flex items-center justify-center border ${
-                            isSelected
-                              ? 'bg-emerald-500 border-emerald-500 text-white'
-                              : 'border-slate-300 bg-white'
-                          }`}
-                        >
-                          {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                        <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${
+                          isSelected ? 'bg-[#8FA89B] border-[#8FA89B] text-white' : 'border-slate-300'
+                        }`}>
+                          {isSelected && <Check className="w-2.5 h-2.5 stroke-[3]" />}
                         </div>
                       </button>
                     );
@@ -422,39 +270,120 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
               </motion.div>
             )}
 
-            {step === 4 && (
+            {/* Step 5: Goals */}
+            {step === 5 && (
               <motion.div
-                key="step4"
+                key="step5"
+                initial={{ opacity: 0, x: 15 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -15 }}
+                className="space-y-4"
+              >
+                <div className="text-center space-y-1">
+                  <h1 className="font-display font-black text-lg text-slate-800">
+                    Goals Selection
+                  </h1>
+                  <p className="text-xs text-slate-400">
+                    What are your main wellness focuses?
+                  </p>
+                </div>
+
+                <div className="flex flex-col gap-2 max-h-[220px] overflow-y-auto pr-1">
+                  {goalOptions.map((opt) => {
+                    const isSelected = selectedGoals.includes(opt.id);
+                    return (
+                      <button
+                        key={opt.id}
+                        onClick={() => toggleGoal(opt.id)}
+                        className={`p-3 rounded-2xl border-2 text-left flex items-center justify-between transition-all cursor-pointer ${
+                          isSelected
+                            ? 'border-[#8FA89B] bg-[#8FA89B]/10'
+                            : 'border-slate-150 bg-[#FFFDF8] hover:border-[#8FA89B]/50'
+                        }`}
+                      >
+                        <div>
+                          <h4 className="font-display font-bold text-xs text-slate-800">{opt.label}</h4>
+                          <p className="text-[10px] text-slate-400 mt-0.5">{opt.desc}</p>
+                        </div>
+                        <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${
+                          isSelected ? 'bg-[#8FA89B] border-[#8FA89B] text-white' : 'border-slate-300'
+                        }`}>
+                          {isSelected && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </motion.div>
+            )}
+
+            {/* Step 6: Referral & Final Confirmation */}
+            {step === 6 && (
+              <motion.div
+                key="step6"
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95 }}
-                className="flex flex-col items-center justify-center space-y-3 py-2"
+                className="space-y-4 text-center"
               >
-                {/* Mascot Interactive Showcase */}
-                <Mascot mood="excited" size={110} className="mb-2" showBubble={false} />
+                <div className="space-y-1">
+                  <h1 className="font-display font-black text-lg text-slate-800">
+                    Finalize Flock Setup
+                  </h1>
+                  <p className="text-xs text-slate-450 leading-relaxed max-w-xs mx-auto">
+                    Your flock profile is configured. Have a referral code to claim seed discount credits?
+                  </p>
+                </div>
 
-                <div className="text-center space-y-1 max-w-sm">
-                  <h2 className="font-display font-bold text-sm text-slate-800 leading-tight">
-                    Meet Avelyn
-                  </h2>
-                  <p className="font-display text-emerald-600 font-bold text-xs">
-                    "Together we will keep your flock glowing."
-                  </p>
-                  <p className="text-[11px] text-slate-500 px-2 font-sans">
-                    Join Avelyn daily. Earn XP points, unlock bird master badges, and discover veterinarian formulas curated specifically for your gorgeous flock.
-                  </p>
+                {/* Referral Input Box */}
+                <div className="bg-[#FAF8F5] border border-slate-200 rounded-2xl p-3 space-y-2 max-w-sm mx-auto">
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={referralInput}
+                      onChange={(e) => setReferralInput(e.target.value)}
+                      placeholder="REF-XXXXXX"
+                      className="flex-1 px-3 py-1.5 rounded-xl border border-slate-200 text-xs outline-none focus:border-[#8FA89B] font-mono uppercase bg-white"
+                      disabled={referralMessage?.type === 'success' || applyingReferral}
+                    />
+                    <button
+                      onClick={handleApplyCode}
+                      disabled={!referralInput.trim() || referralMessage?.type === 'success' || applyingReferral}
+                      className="bg-[#8FA89B] hover:bg-[#8FA89B]/90 disabled:opacity-50 text-white text-[10px] font-bold px-3.5 py-1.5 rounded-xl transition-colors cursor-pointer"
+                    >
+                      {applyingReferral ? 'Applying...' : 'Apply'}
+                    </button>
+                  </div>
+                  {referralMessage && (
+                    <p className={`text-[10px] font-bold text-left ${
+                      referralMessage.type === 'success' ? 'text-emerald-600' : 'text-rose-600'
+                    }`}>
+                      {referralMessage.text}
+                    </p>
+                  )}
+                </div>
+
+                {/* Client IDs info */}
+                <div className="grid grid-cols-2 gap-2 max-w-sm mx-auto text-xs text-left">
+                  <div className="bg-[#FAF8F5] border border-slate-200/60 p-2.5 rounded-xl">
+                    <span className="text-[9px] font-bold text-slate-400 block uppercase">Your Client ID</span>
+                    <span className="font-mono font-bold text-slate-700 block mt-0.5">{clientId}</span>
+                  </div>
+                  <div className="bg-[#FAF8F5] border border-slate-200/60 p-2.5 rounded-xl">
+                    <span className="text-[9px] font-bold text-slate-400 block uppercase">Your Referral Code</span>
+                    <span className="font-mono font-bold text-[#8FA89B] block mt-0.5">{referralCode}</span>
+                  </div>
                 </div>
               </motion.div>
             )}
           </AnimatePresence>
 
-          {/* Action Buttons */}
-          <div className="flex items-center justify-between mt-4 pt-2 border-t border-slate-100">
+          {/* Action buttons */}
+          <div className="flex items-center justify-between mt-6 pt-3 border-t border-slate-100">
             {step > 1 ? (
               <button
                 onClick={handleBack}
-                className="flex items-center gap-1.5 py-1.5 px-3 rounded-lg border border-slate-200 text-slate-600 text-xs font-semibold hover:bg-slate-50 transition-colors cursor-pointer"
-                id="onboarding-back-btn"
+                className="flex items-center gap-1 py-1.5 px-3.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-bold transition-all cursor-pointer"
               >
                 <ArrowLeft className="w-3.5 h-3.5" /> Back
               </button>
@@ -464,16 +393,16 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
 
             <button
               onClick={handleNext}
-              disabled={step === 1 && selectedBirds.length === 0}
-              className={`flex items-center gap-1.5 py-1.5 px-3 rounded-lg font-display font-bold text-xs shadow-xs cursor-pointer transition-all ${
-                step === 1 && selectedBirds.length === 0
-                  ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed shadow-none'
-                  : 'bg-emerald-500 border border-emerald-600 hover:bg-emerald-600 text-white'
+              disabled={step === 2 && selectedBirds.length === 0}
+              className={`flex items-center gap-1.5 py-1.5 px-4 rounded-xl font-display font-black text-xs shadow-xs cursor-pointer transition-all ${
+                step === 2 && selectedBirds.length === 0
+                  ? 'bg-slate-100 text-slate-450 border border-slate-200 cursor-not-allowed shadow-none'
+                  : 'bg-[#8FA89B] border border-[#8FA89B]/80 hover:bg-[#8FA89B]/90 text-white'
               }`}
               id="onboarding-next-btn"
             >
-              {step === 4 ? 'Start Journey' : 'Continue'}{' '}
-              {step < 4 ? <ArrowRight className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5 stroke-[3]" />}
+              {step === 6 ? 'Start Journey' : 'Continue'}
+              {step < 6 ? <ArrowRight className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5 stroke-[3]" />}
             </button>
           </div>
         </div>

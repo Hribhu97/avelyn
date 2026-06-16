@@ -1,12 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  signInWithPopup,
   signOut,
   onAuthStateChanged,
   type User as FirebaseUser,
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword
+  RecaptchaVerifier,
+  signInWithPhoneNumber
 } from 'firebase/auth';
 import Onboarding from './components/Onboarding';
 import Mascot from './components/Mascot';
@@ -20,8 +19,13 @@ import AvelynAdvice from './components/AvelynAdvice';
 import AvelynCamera from './components/AvelynCamera';
 import AvelynStickers from './components/AvelynStickers';
 import AvelynLogo from './components/AvelynLogo';
-import { firebaseAuth, googleProvider } from './lib/firebase';
+import { firebaseAuth, googleProvider, db } from './lib/firebase';
+import { 
+  doc, onSnapshot, setDoc, updateDoc, collection, getDocs, addDoc, query, where 
+} from 'firebase/firestore';
+import AdminDashboard from './components/AdminDashboard';
 import {
+  BirdType,
   FlockInfo,
   DailyTask,
   Badge,
@@ -60,6 +64,7 @@ import {
   VolumeX,
   Plus,
   X,
+  ShieldCheck,
 } from 'lucide-react';
 
 const DEFAULT_TASKS: DailyTask[] = [
@@ -67,6 +72,7 @@ const DEFAULT_TASKS: DailyTask[] = [
   { id: 'task-pellets', label: 'Serve Pellet & Veg Chop mix 🥦', done: false, xpReward: 20, category: 'nutrition', icon: 'utensils' },
   { id: 'task-social', label: '15 Mins Active Social Play ❤️', done: false, xpReward: 20, category: 'social', icon: 'heart' },
   { id: 'task-flight', label: 'Supervised Free Flight Time ✈️', done: false, xpReward: 25, category: 'exercise', icon: 'navigation' },
+  { id: 'task-cage', label: 'Clean Cage Bottom Tray ✨', done: false, xpReward: 20, category: 'custom', icon: 'trash' },
 ];
 
 const DEFAULT_BADGES: Badge[] = [
@@ -84,18 +90,23 @@ export default function App() {
   const [authReady, setAuthReady] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
   const [session, setSession] = useState<UserState | null>(null);
-  const [activeTab, setActiveTab] = useState<'home' | 'lessons' | 'discover' | 'community' | 'badges'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'lessons' | 'discover' | 'community' | 'badges' | 'admin'>('home');
+  const [referralInput, setReferralInput] = useState('');
+  const [referralStatus, setReferralStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
   const [simulatedMissedDays, setSimulatedMissedDays] = useState(false);
   const [flockName, setFlockName] = useState('Kiwi');
   const [editingFlockName, setEditingFlockName] = useState(false);
   const [showLevelUp, setShowLevelUp] = useState(false);
 
-  // Email and Password Auth States
-  const [isSignUp, setIsSignUp] = useState(false);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [authError, setAuthError] = useState<string | null>(null);
+  // Phone OTP Auth States
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [countryCode, setCountryCode] = useState('+91');
+  const [otpCode, setOtpCode] = useState('');
+  const [confirmationResult, setConfirmationResult] = useState<any>(null);
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpLoading, setOtpLoading] = useState(false);
+  const [otpError, setOtpError] = useState<string | null>(null);
+  const [resendCooldown, setResendCooldown] = useState(0);
   const [showMascotModal, setShowMascotModal] = useState(false);
 
   // Mobile, Splash & Audio States
@@ -147,24 +158,72 @@ export default function App() {
   // Load user state after auth is ready
   useEffect(() => {
     if (!authReady) return;
-    if (!authUser || !sessionStorageKey) {
+    if (!authUser) {
       setSession(null);
       return;
     }
 
-    const raw = localStorage.getItem(sessionStorageKey);
-    if (raw) {
-      try {
-        setSession(JSON.parse(raw));
-      } catch (e) {
-        initializeEmptySession();
+    const userRef = doc(db, 'users', authUser.uid);
+    const unsub = onSnapshot(userRef, async (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data() as UserState;
+        let needsUpdate = false;
+        const updated = { ...data };
+
+        const adminPhoneNumber = process.env.ADMIN_PHONE_NUMBER || '+917980176991';
+        if (!updated.role) {
+          updated.role = authUser.phoneNumber === adminPhoneNumber ? 'admin' : 'user';
+          needsUpdate = true;
+        }
+        if (!updated.clientId) {
+          const randomId = Math.floor(100000 + Math.random() * 900000);
+          updated.clientId = `AVL-${randomId}`;
+          needsUpdate = true;
+        }
+        if (!updated.referralCode) {
+          const randomCode = Math.floor(100000 + Math.random() * 900000);
+          updated.referralCode = `REF-${randomCode}`;
+          needsUpdate = true;
+        }
+        if (updated.referralUsed === undefined) {
+          updated.referralUsed = false;
+          updated.referralCount = 0;
+          updated.totalReferralSavings = 0;
+          updated.totalReferralRewards = 0;
+          needsUpdate = true;
+        }
+        if (updated.emergencyKitSetup === undefined) {
+          updated.emergencyKitSetup = false;
+          needsUpdate = true;
+        }
+        if (updated.profileCompletePercent === undefined) {
+          updated.profileCompletePercent = 0;
+          needsUpdate = true;
+        }
+        if (!updated.phoneNumber) {
+          updated.phoneNumber = authUser.phoneNumber || '';
+          needsUpdate = true;
+        }
+
+        if (needsUpdate) {
+          try {
+            await setDoc(userRef, updated);
+          } catch (err) {
+            console.error("Error auto-fixing user record on snapshot:", err);
+          }
+        }
+        setSession(updated);
+      } else {
+        await initializeEmptySession();
       }
-      return;
-    }
-    initializeEmptySession();
-  }, [authReady, authUser, sessionStorageKey]);
+    });
+
+    return () => unsub();
+  }, [authReady, authUser]);
 
   useEffect(() => {
+    // Force sign out on mount so the login page is the 1st site of interaction
+    signOut(firebaseAuth).catch(() => {});
     const unsub = onAuthStateChanged(firebaseAuth, (user) => {
       setAuthUser(user);
       setAuthReady(true);
@@ -172,7 +231,13 @@ export default function App() {
     return () => unsub();
   }, []);
 
-  const initializeEmptySession = () => {
+  const initializeEmptySession = async () => {
+    if (!authUser) return;
+    const adminPhoneNumber = process.env.ADMIN_PHONE_NUMBER || '+917980176991';
+    const isStaticAdmin = authUser.phoneNumber === adminPhoneNumber;
+    const randomId = Math.floor(100000 + Math.random() * 900000);
+    const randomCode = Math.floor(100000 + Math.random() * 900000);
+
     const empty: UserState = {
       onboardingCompleted: false,
       flock: {
@@ -197,15 +262,119 @@ export default function App() {
         vocal: 'normal',
         lastUpdated: new Date().toISOString().split('T')[0],
       },
+      role: isStaticAdmin ? 'admin' : 'user',
+      clientId: `AVL-${randomId}`,
+      referralCode: `REF-${randomCode}`,
+      referralUsed: false,
+      referralCount: 0,
+      totalReferralSavings: 0,
+      totalReferralRewards: 0,
+      emergencyKitSetup: false,
+      profileCompletePercent: 0,
+      phoneNumber: authUser.phoneNumber || '',
     };
+    
     setSession(empty);
+    try {
+      await setDoc(doc(db, 'users', authUser.uid), empty);
+    } catch (err) {
+      console.error("Error setting empty session:", err);
+    }
   };
 
-  // Save session state to localStorage
-  const saveSession = (updated: UserState) => {
-    if (!sessionStorageKey) return;
+  // Save session state to Firestore (and localstorage fallback)
+  const saveSession = async (updated: UserState) => {
+    if (!authUser) return;
     setSession(updated);
-    localStorage.setItem(sessionStorageKey, JSON.stringify(updated));
+    try {
+      await setDoc(doc(db, 'users', authUser.uid), updated);
+    } catch (err) {
+      console.error("Error writing to Firestore, falling back to local storage:", err);
+      if (sessionStorageKey) {
+        localStorage.setItem(sessionStorageKey, JSON.stringify(updated));
+      }
+    }
+  };
+
+  const handleApplyReferralCode = async (code: string): Promise<{ success: boolean; message: string }> => {
+    if (!session || !authUser) return { success: false, message: 'Not logged in.' };
+    setReferralStatus(null);
+    const cleanedCode = code.trim().toUpperCase();
+    
+    if (cleanedCode === session.referralCode) {
+      const msg = { type: 'error' as const, message: 'You cannot use your own referral code!' };
+      setReferralStatus(msg);
+      return { success: false, message: msg.message };
+    }
+    
+    if (session.referralUsed) {
+      const msg = { type: 'error' as const, message: 'You have already applied a referral code!' };
+      setReferralStatus(msg);
+      return { success: false, message: msg.message };
+    }
+    
+    try {
+      // Look up referrer in firestore
+      const usersSnap = await getDocs(query(collection(db, 'users'), where('referralCode', '==', cleanedCode)));
+      if (usersSnap.empty) {
+        const msg = { type: 'error' as const, message: 'Invalid referral code!' };
+        setReferralStatus(msg);
+        return { success: false, message: msg.message };
+      }
+      
+      const referrerDoc = usersSnap.docs[0];
+      const referrerUid = referrerDoc.id;
+      const referrerData = referrerDoc.data() as UserState;
+      
+      // Update referrer: +1 referral count, award 10 seeds
+      const updatedReferrer = {
+        ...referrerData,
+        referralCount: (referrerData.referralCount || 0) + 1,
+        totalReferralRewards: (referrerData.totalReferralRewards || 0) + 10,
+        seeds: (referrerData.seeds || 0) + 10
+      };
+      await setDoc(doc(db, 'users', referrerUid), updatedReferrer);
+      
+      // Update referee (current user): set referralUsed to true, award 5 seeds
+      const updatedReferee = {
+        ...session,
+        referralUsed: true,
+        totalReferralSavings: (session.totalReferralSavings || 0) + 5,
+        seeds: (session.seeds || 0) + 5
+      };
+      await setDoc(doc(db, 'users', authUser.uid), updatedReferee);
+      
+      // Log referral conversion in 'referrals' collection
+      const refId = `ref-${Date.now()}`;
+      await setDoc(doc(db, 'referrals', refId), {
+        id: refId,
+        referrerUid,
+        referrerPhone: referrerData.phoneNumber || referrerUid,
+        referredUid: authUser.uid,
+        referredPhone: authUser.phoneNumber || authUser.uid,
+        createdAt: new Date().toISOString()
+      });
+
+      // Write simulated notification to 'mail' collection
+      const mailId = `mail-${Date.now()}`;
+      await setDoc(doc(db, 'mail', mailId), {
+        to: referrerData.phoneNumber || referrerUid,
+        createdAt: new Date().toISOString(),
+        message: {
+          subject: 'Referral Reward Earned! 🎁',
+          html: `<h3>Your referral code was used!</h3><p>User with phone <b>${authUser.phoneNumber || 'unknown'}</b> signed up. You earned 10 Seeds credit!</p>`
+        }
+      });
+
+      const successMsg = { type: 'success' as const, message: 'Referral code applied successfully! 5 Seeds added to your wallet.' };
+      setReferralStatus(successMsg);
+      return { success: true, message: successMsg.message };
+    } catch (err: any) {
+      console.error(err);
+      const errMsg = { type: 'error' as const, message: 'Failed to apply referral code: ' + err.message };
+      setReferralStatus(errMsg);
+      return { success: false, message: errMsg.message };
+    }
   };
 
   // Handle clinical health observations updates
@@ -235,22 +404,126 @@ export default function App() {
     saveSession(updated);
   };
 
-  const handleGoogleLogin = async () => {
-    setAuthLoading(true);
-    setAuthError(null);
+  const getRecaptchaVerifier = () => {
+    if ((window as any).recaptchaVerifier) {
+      return (window as any).recaptchaVerifier;
+    }
+    const container = document.getElementById('recaptcha-container');
+    if (!container) {
+      console.error('Recaptcha container not found in DOM');
+      return null;
+    }
     try {
-      await signInWithPopup(firebaseAuth, googleProvider);
-    } catch (err: any) {
-      console.error(err);
-      setAuthError('Google Sign-In failed. Please try again.');
-    } finally {
-      setAuthLoading(false);
+      const verifier = new RecaptchaVerifier(firebaseAuth, 'recaptcha-container', {
+        size: 'invisible',
+        callback: () => {
+          // Solved
+        },
+        'expired-callback': () => {
+          setOtpError('reCAPTCHA expired. Please try sending OTP again.');
+        }
+      });
+      (window as any).recaptchaVerifier = verifier;
+      return verifier;
+    } catch (err) {
+      console.error('Error initializing RecaptchaVerifier:', err);
+      return null;
     }
   };
 
-  const handleGoogleLogout = async () => {
+  const clearRecaptcha = () => {
+    if ((window as any).recaptchaVerifier) {
+      try {
+        (window as any).recaptchaVerifier.clear();
+      } catch (e) {}
+      (window as any).recaptchaVerifier = null;
+    }
+  };
+
+  const handleSendOTP = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const cleanNumber = phoneNumber.replace(/\D/g, '');
+    if (cleanNumber.length < 7) {
+      setOtpError('Please enter a valid phone number.');
+      return;
+    }
+    const fullPhoneNumber = `${countryCode}${cleanNumber}`;
+    setOtpLoading(true);
+    setOtpError(null);
+
+    const verifier = getRecaptchaVerifier();
+    if (!verifier) {
+      setOtpError('Could not initialize safety verification. Please refresh.');
+      setOtpLoading(false);
+      return;
+    }
+
+    try {
+      const confirmation = await signInWithPhoneNumber(firebaseAuth, fullPhoneNumber, verifier);
+      setConfirmationResult(confirmation);
+      setOtpSent(true);
+      setResendCooldown(30);
+      setOtpError(null);
+    } catch (err: any) {
+      console.error(err);
+      clearRecaptcha();
+      if (err.code === 'auth/invalid-phone-number') {
+        setOtpError('The phone number entered is invalid.');
+      } else if (err.code === 'auth/too-many-requests') {
+        setOtpError('Too many attempts. Please try again later.');
+      } else {
+        setOtpError(err.message || 'Failed to send verification code. Please check details.');
+      }
+    } finally {
+      setOtpLoading(false);
+    }
+  };
+
+  const handleVerifyOTP = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!otpCode || otpCode.length !== 6) {
+      setOtpError('Please enter a 6-digit OTP.');
+      return;
+    }
+    setOtpLoading(true);
+    setOtpError(null);
+
+    try {
+      if (!confirmationResult) {
+        throw new Error('No verification session found. Please request a new OTP.');
+      }
+      await confirmationResult.confirm(otpCode);
+      setOtpError(null);
+    } catch (err: any) {
+      console.error(err);
+      if (err.code === 'auth/invalid-verification-code') {
+        setOtpError('The OTP entered is incorrect. Please try again.');
+      } else if (err.code === 'auth/code-expired') {
+        setOtpError('The verification code has expired. Please request a new one.');
+      } else {
+        setOtpError(err.message || 'OTP verification failed. Please try again.');
+      }
+    } finally {
+      setOtpLoading(false);
+    }
+  };
+
+  const handleEditPhoneNumber = () => {
+    setOtpSent(false);
+    setConfirmationResult(null);
+    setOtpCode('');
+    setOtpError(null);
+    clearRecaptcha();
+  };
+
+  const handleLogout = async () => {
     AmbientMusicManager.stop();
     setMusicPlaying(false);
+    clearRecaptcha();
+    setOtpSent(false);
+    setConfirmationResult(null);
+    setOtpCode('');
+    setOtpError(null);
     await signOut(firebaseAuth);
   };
 
@@ -259,75 +532,13 @@ export default function App() {
     setMusicPlaying(active);
   };
 
-  const handleEmailSignUp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setAuthError(null);
-    if (!email || !password || !confirmPassword) {
-      setAuthError('Please fill in all fields.');
-      return;
-    }
-    if (password.length < 6) {
-      setAuthError('Password must be at least 6 characters long.');
-      return;
-    }
-    if (password !== confirmPassword) {
-      setAuthError('Passwords do not match.');
-      return;
-    }
-    setAuthLoading(true);
-    try {
-      await createUserWithEmailAndPassword(firebaseAuth, email, password);
-    } catch (err: any) {
-      console.error(err);
-      if (err.code === 'auth/email-already-in-use') {
-        setAuthError('This email address is already in use.');
-      } else if (err.code === 'auth/invalid-email') {
-        setAuthError('Please enter a valid email address.');
-      } else if (err.code === 'auth/weak-password') {
-        setAuthError('Password is too weak.');
-      } else {
-        setAuthError(err.message || 'An error occurred during registration.');
-      }
-    } finally {
-      setAuthLoading(false);
-    }
-  };
-
-  const handleEmailSignIn = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setAuthError(null);
-    if (!email || !password) {
-      setAuthError('Please enter both email and password.');
-      return;
-    }
-    setAuthLoading(true);
-    try {
-      await signInWithEmailAndPassword(firebaseAuth, email, password);
-    } catch (err: any) {
-      console.error(err);
-      if (
-        err.code === 'auth/user-not-found' ||
-        err.code === 'auth/wrong-password' ||
-        err.code === 'auth/invalid-credential'
-      ) {
-        setAuthError('Incorrect email or password.');
-      } else if (err.code === 'auth/invalid-email') {
-        setAuthError('Please enter a valid email address.');
-      } else {
-        setAuthError(err.message || 'An error occurred during login.');
-      }
-    } finally {
-      setAuthLoading(false);
-    }
-  };
-
-  const toggleAuthMode = () => {
-    setIsSignUp(!isSignUp);
-    setAuthError(null);
-    setEmail('');
-    setPassword('');
-    setConfirmPassword('');
-  };
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = setInterval(() => {
+      setResendCooldown((prev) => prev - 1);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [resendCooldown]);
 
   if (showSplash) {
     return (
@@ -453,156 +664,165 @@ export default function App() {
 
   if (!authUser) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-[#F4FFF9] via-white to-[#EFF8FF] flex items-center justify-center p-4">
+      <div className="min-h-screen bg-[#FAF8F5] flex items-center justify-center p-4 font-sans text-[#1C1C1A]">
         <motion.div
           initial={{ opacity: 0, y: 22 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.55, ease: 'easeOut' }}
-          className="w-full max-w-md rounded-3xl border border-emerald-100/80 bg-white/95 p-6 md:p-8 shadow-2xl backdrop-blur-md"
+          className="w-full max-w-md bg-[#FFFDF8] border-2 border-[#8FA89B] rounded-3xl p-6 md:p-8 shadow-xl relative overflow-hidden"
         >
+          {/* Invisible ReCAPTCHA Container */}
+          <div id="recaptcha-container"></div>
+
           <div className="space-y-6">
-            <div className="flex justify-center">
+            <div className="flex flex-col items-center justify-center gap-3">
               <AvelynLogo />
+              <Mascot mood="happy" size={100} showBubble={false} />
             </div>
 
-            <div className="space-y-1 text-center">
-              <h2 className="text-xl font-display font-black text-slate-800 tracking-tight">
-                {isSignUp ? 'Create New Account' : 'Welcome to Avelyn'}
-              </h2>
-              <p className="text-xs text-slate-500 max-w-xs mx-auto leading-relaxed">
-                Companion bird wellness with structured care schedules, diagnostic check-ins, and analytics.
-              </p>
-            </div>
+            {!otpSent ? (
+              // Step 1: Phone number entry
+              <div className="space-y-4">
+                <div className="space-y-1 text-center">
+                  <h2 className="text-xl font-display font-black text-slate-800 tracking-tight">
+                    Welcome to Avelyn
+                  </h2>
+                  <p className="text-xs text-slate-500 max-w-xs mx-auto leading-relaxed">
+                    Companion bird wellness with structured care schedules, diagnostic check-ins, and analytics. Sign in securely via Phone OTP.
+                  </p>
+                </div>
 
-            {/* Premium toggle bar with sliding animation */}
-            <div className="relative flex p-1 bg-slate-50 border border-slate-100 rounded-xl">
-              <div
-                className="absolute top-1 bottom-1 rounded-lg bg-white shadow-xs transition-all duration-300 ease-out"
-                style={{
-                  left: isSignUp ? '50%' : '4px',
-                  width: 'calc(50% - 4px)',
-                }}
-              />
-              <button
-                type="button"
-                onClick={toggleAuthMode}
-                className={`flex-1 text-center py-2 text-xs font-bold transition-colors relative z-10 cursor-pointer ${
-                  !isSignUp ? 'text-emerald-700 font-extrabold' : 'text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                Sign In
-              </button>
-              <button
-                type="button"
-                onClick={toggleAuthMode}
-                className={`flex-1 text-center py-2 text-xs font-bold transition-colors relative z-10 cursor-pointer ${
-                  isSignUp ? 'text-emerald-700 font-extrabold' : 'text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                Create Account
-              </button>
-            </div>
+                <form onSubmit={handleSendOTP} className="space-y-4">
+                  {otpError && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -5 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="p-3 rounded-xl bg-rose-50 border border-rose-100 flex items-start gap-2.5"
+                    >
+                      <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                      <span className="text-xs font-semibold text-rose-700 leading-snug">{otpError}</span>
+                    </motion.div>
+                  )}
 
-            <form onSubmit={isSignUp ? handleEmailSignUp : handleEmailSignIn} className="space-y-4">
-              {authError && (
-                <motion.div
-                  initial={{ opacity: 0, y: -5 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="p-3 rounded-xl bg-rose-50 border border-rose-100 flex items-start gap-2.5"
-                >
-                  <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
-                  <span className="text-xs font-semibold text-rose-700 leading-snug">{authError}</span>
-                </motion.div>
-              )}
+                  <div className="flex gap-2">
+                    <div className="w-1/3 space-y-1">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                        Country
+                      </label>
+                      <select
+                        value={countryCode}
+                        onChange={(e) => setCountryCode(e.target.value)}
+                        className="w-full px-3 py-2.5 rounded-xl border border-[#8FA89B]/45 bg-[#FAF8F5] text-slate-700 text-xs font-bold focus:outline-none focus:border-[#8FA89B] transition-all cursor-pointer"
+                      >
+                        <option value="+91">🇮🇳 +91</option>
+                        <option value="+1">🇨🇦 +1 (CA)</option>
+                        <option value="+1">🇺🇸 +1 (US)</option>
+                        <option value="+44">🇬🇧 +44</option>
+                        <option value="+61">🇦🇺 +61</option>
+                      </select>
+                    </div>
+                    <div className="flex-1 space-y-1">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                        Phone Number
+                      </label>
+                      <input
+                        type="tel"
+                        value={phoneNumber}
+                        onChange={(e) => setPhoneNumber(e.target.value)}
+                        placeholder="79801 76991"
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-[#8FA89B]/45 bg-[#FAF8F5] text-slate-800 text-xs font-medium focus:outline-none focus:border-[#8FA89B] focus:ring-4 focus:ring-[#8FA89B]/10 focus:bg-[#FFFDF8] transition-all font-mono"
+                        required
+                      />
+                    </div>
+                  </div>
 
-              {/* Email Input */}
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                  Email Address
-                </label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="name@flock.com"
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50/30 text-slate-800 text-sm placeholder-slate-400 focus:outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 focus:bg-white transition-all"
-                  required
-                />
-              </div>
-
-              {/* Password Input */}
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                  Password
-                </label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50/30 text-slate-800 text-sm placeholder-slate-400 focus:outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 focus:bg-white transition-all"
-                  required
-                />
-              </div>
-
-              {/* Confirm Password Input (Only visible during Sign Up) */}
-              <AnimatePresence initial={false}>
-                {isSignUp && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    exit={{ opacity: 0, height: 0 }}
-                    className="overflow-hidden space-y-1"
+                  <button
+                    type="submit"
+                    disabled={otpLoading || !phoneNumber.trim()}
+                    className="w-full py-3 rounded-xl bg-[#8FA89B] hover:bg-[#8FA89B]/90 text-white font-bold text-xs shadow-md shadow-[#8FA89B]/10 hover:shadow-[#8FA89B]/20 active:scale-98 transition-all disabled:opacity-75 disabled:cursor-not-allowed flex items-center justify-center cursor-pointer"
                   >
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block pt-1">
-                      Confirm Password
+                    {otpLoading ? (
+                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    ) : (
+                      'Send Verification Code'
+                    )}
+                  </button>
+                </form>
+              </div>
+            ) : (
+              // Step 2: OTP Entry
+              <div className="space-y-4">
+                <div className="space-y-1 text-center">
+                  <h2 className="text-xl font-display font-black text-slate-800 tracking-tight">
+                    Verify Code
+                  </h2>
+                  <p className="text-xs text-slate-500 max-w-xs mx-auto leading-relaxed">
+                    We sent a 6-digit verification code to <span className="font-mono font-bold text-slate-700">{countryCode} {phoneNumber}</span>.
+                  </p>
+                </div>
+
+                <form onSubmit={handleVerifyOTP} className="space-y-4">
+                  {otpError && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -5 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="p-3 rounded-xl bg-rose-50 border border-rose-100 flex items-start gap-2.5"
+                    >
+                      <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                      <span className="text-xs font-semibold text-rose-700 leading-snug">{otpError}</span>
+                    </motion.div>
+                  )}
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block text-center">
+                      6-Digit OTP
                     </label>
                     <input
-                      type="password"
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      placeholder="••••••••"
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50/30 text-slate-800 text-sm placeholder-slate-400 focus:outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 focus:bg-white transition-all"
-                      required={isSignUp}
+                      type="text"
+                      maxLength={6}
+                      value={otpCode}
+                      onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ''))}
+                      placeholder="000000"
+                      className="w-full px-3.5 py-3 rounded-xl border border-[#8FA89B]/45 bg-[#FAF8F5] text-slate-800 text-lg font-bold tracking-[0.75em] text-center focus:outline-none focus:border-[#8FA89B] focus:ring-4 focus:ring-[#8FA89B]/10 focus:bg-[#FFFDF8] transition-all font-mono"
+                      required
                     />
-                  </motion.div>
-                )}
-              </AnimatePresence>
+                  </div>
 
-              <button
-                type="submit"
-                disabled={authLoading}
-                className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-md shadow-emerald-600/10 hover:shadow-emerald-600/20 active:scale-98 transition-all disabled:opacity-75 disabled:cursor-not-allowed flex items-center justify-center cursor-pointer"
-              >
-                {authLoading ? (
-                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                ) : isSignUp ? (
-                  'Create Account'
-                ) : (
-                  'Sign In'
-                )}
-              </button>
-            </form>
+                  <button
+                    type="submit"
+                    disabled={otpLoading || otpCode.length !== 6}
+                    className="w-full py-3 rounded-xl bg-[#E0A926] hover:bg-[#E0A926]/90 text-white font-bold text-xs shadow-md shadow-[#E0A926]/10 hover:shadow-[#E0A926]/20 active:scale-98 transition-all disabled:opacity-75 disabled:cursor-not-allowed flex items-center justify-center cursor-pointer"
+                  >
+                    {otpLoading ? (
+                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    ) : (
+                      'Verify & Sign In'
+                    )}
+                  </button>
 
-            <div className="relative flex py-2 items-center">
-              <div className="flex-grow border-t border-slate-100" />
-              <span className="flex-shrink mx-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                Or Continue With
-              </span>
-              <div className="flex-grow border-t border-slate-100" />
-            </div>
-
-            <button
-              onClick={handleGoogleLogin}
-              disabled={authLoading}
-              className="w-full inline-flex items-center justify-center gap-2.5 rounded-xl bg-white border border-slate-200 text-slate-700 px-4 py-2.5 text-xs font-bold hover:bg-slate-50 hover:border-slate-300 disabled:opacity-70 disabled:cursor-not-allowed active:scale-98 transition-all cursor-pointer shadow-xs"
-            >
-              <GoogleIcon size={16} />
-              {authLoading ? 'Signing in...' : 'Sign in with Google'}
-            </button>
+                  <div className="flex flex-col items-center gap-2.5 pt-2">
+                    <button
+                      type="button"
+                      disabled={resendCooldown > 0 || otpLoading}
+                      onClick={handleSendOTP}
+                      className="text-xs text-[#8FA89B] hover:text-[#8FA89B]/80 font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                    >
+                      {resendCooldown > 0 ? `Resend code in ${resendCooldown}s` : 'Resend Code'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleEditPhoneNumber}
+                      className="text-[10px] text-slate-450 hover:underline cursor-pointer"
+                    >
+                      Change phone number
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
 
             <p className="text-[10px] text-slate-400 text-center leading-relaxed max-w-xs mx-auto">
-              By logging in, you secure access to your bird's logs and progress synced with Firebase.
+              By signing in, you secure access to your bird's logs and progress synced with Firebase.
             </p>
           </div>
         </motion.div>
@@ -619,15 +839,39 @@ export default function App() {
   }
 
   // Handle Onboarding Completion
-  const handleOnboardingComplete = (flockInfo: FlockInfo) => {
+  const handleOnboardingComplete = (data: {
+    birdType: BirdType[];
+    birdCount: number;
+    experienceLevel: 'Beginner' | 'Intermediate' | 'Advanced';
+    goals: string[];
+    referralCodeEntered?: string;
+  }) => {
+    if (!session) return;
+    const now = new Date().toISOString();
+    const legacyExperience: 'beginner' | 'experienced' =
+      data.experienceLevel.toLowerCase() === 'beginner' ? 'beginner' : 'experienced';
+
     const updated: UserState = {
       ...session,
       onboardingCompleted: true,
-      flock: flockInfo,
-      // Default to bird-name Kiwi unless other chosen
+      birdType: data.birdType,
+      birdCount: data.birdCount,
+      experienceLevel: data.experienceLevel,
+      goals: data.goals,
+      createdAt: session.createdAt || now,
+      lastLogin: now,
+      flock: {
+        birdTypes: data.birdType,
+        count: data.birdCount,
+        ageGroup: 'young',
+        experienceLevel: legacyExperience,
+        focusArea: data.goals,
+      },
       xp: 25, // starting XP bonus
-      seeds: 25,
+      seeds: session.seeds + 15, // additional seeds for completing onboarding
       streak: 3, // starting streak bonus
+      profileCompletePercent: 100,
+      emergencyKitSetup: false,
     };
     saveSession(updated);
   };
@@ -793,9 +1037,25 @@ export default function App() {
     }
   };
 
+  const handleToggleEmergencyKit = () => {
+    if (!session) return;
+    const updated: UserState = {
+      ...session,
+      emergencyKitSetup: !session.emergencyKitSetup,
+    };
+    saveSession(updated);
+  };
+
   // Render onboarding initially if incomplete
   if (!session.onboardingCompleted) {
-    return <Onboarding onComplete={handleOnboardingComplete} />;
+    return (
+      <Onboarding
+        clientId={session.clientId}
+        referralCode={session.referralCode}
+        onApplyReferral={handleApplyReferralCode}
+        onComplete={handleOnboardingComplete}
+      />
+    );
   }
 
   // Calculate stats
@@ -803,13 +1063,35 @@ export default function App() {
   const totalTasks = session.tasks.length;
   const completionPercentage = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
 
-  // Premium Health Score algorithm evaluation
-  // Base 40, + active checklist habits (max 30), + educational preparedness index (max 30)
-  // By completing daily habits logging fair status score should be full 100%
-  const allTasksCompleted = totalTasks > 0 && completedTasks === totalTasks;
-  const taskRatioValue = Math.min(30, (completedTasks / (totalTasks || 1)) * 30);
-  const lessonsMultiplier = Math.min(30, session.completedLessons.length * 10);
-  let rawHealthScore = allTasksCompleted ? 100 : Math.round(40 + taskRatioValue + lessonsMultiplier);
+  // Redesigned Bird Health Score (BHS) Engine
+  const logs = {
+    waterChanged: session.tasks.find(t => t.id === 'task-water')?.done || false,
+    foodProvided: session.tasks.find(t => t.id === 'task-pellets')?.done || false,
+    exerciseCompleted: session.tasks.find(t => t.id === 'task-flight')?.done || false,
+    cageCleaned: session.tasks.find(t => t.id === 'task-cage')?.done || false,
+    observationDone: !!session.healthObservations && session.healthObservations.lastUpdated === new Date().toISOString().split('T')[0]
+  };
+
+  const dailyCareSubtotal = 
+    (logs.waterChanged ? 14 : 0) +
+    (logs.cageCleaned ? 14 : 0) +
+    (logs.foodProvided ? 14 : 0) +
+    (logs.exerciseCompleted ? 14 : 0) +
+    (logs.observationDone ? 14 : 0);
+
+  const profileCompletePercent = session.profileCompletePercent || 0;
+  const emergencyKitSetup = session.emergencyKitSetup || false;
+  const completedLessonsCount = session.completedLessons?.length || 0;
+  const streakVal = simulatedMissedDays ? 0 : (session.streak || 0);
+
+  const preparednessSubtotal = 
+    Math.min(7.5, completedLessonsCount * 2.5) +
+    Math.min(7.5, streakVal * 1.5) +
+    Math.min(7.5, (profileCompletePercent * 0.075)) +
+    (emergencyKitSetup ? 7.5 : 0);
+
+  // If no care activities checked today, raw score is 0
+  let rawHealthScore = dailyCareSubtotal === 0 ? 0 : Math.round(dailyCareSubtotal + preparednessSubtotal);
 
   // Apply weighted symptom deductions from user-inputted health observations
   let activeDeductions = 0;
@@ -937,7 +1219,7 @@ export default function App() {
 
             {/* Account actions */}
             <button
-              onClick={handleGoogleLogout}
+              onClick={handleLogout}
               className="text-slate-400 hover:text-rose-500 p-2 hover:bg-rose-50 rounded-lg transition-colors border border-transparent hover:border-rose-100 cursor-pointer"
               title="Sign out"
               id="reboot-app-button"
@@ -1051,6 +1333,7 @@ export default function App() {
             { id: 'discover', label: 'Curated Products', icon: <ProductsIcon size={16} />, clickId: 'nav-discover' },
             { id: 'community', label: 'Flock Community', icon: <CommunityIcon size={16} />, clickId: 'nav-community' },
             { id: 'badges', label: 'Badges & Stickers', icon: <BadgesIcon size={16} />, clickId: 'nav-badges' },
+            ...(session.role === 'admin' ? [{ id: 'admin', label: 'Admin Control', icon: <ShieldCheck className="w-4 h-4 text-rose-500" />, clickId: 'nav-admin' }] : []),
           ].map((tab) => {
             const isSelected = activeTab === tab.id;
             return (
@@ -1193,6 +1476,10 @@ export default function App() {
                     completedLessonsCount={session.completedLessons.length}
                     streak={simulatedMissedDays ? 0 : session.streak}
                     healthObservations={session.healthObservations}
+                    profileCompletePercent={session.profileCompletePercent || 0}
+                    emergencyKitSetup={session.emergencyKitSetup || false}
+                    onToggleEmergencyKit={handleToggleEmergencyKit}
+                    dailyCareLogs={logs}
                   />
 
                   {/* Health observations input */}
@@ -1247,6 +1534,67 @@ export default function App() {
                           </div>
                         );
                       })}
+                    </div>
+                  </div>
+
+                  {/* Referral Code Entry Card */}
+                  <div className="bg-white border-2 border-slate-100 rounded-2xl p-3 shadow-xs space-y-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center text-xs">
+                        🎁
+                      </div>
+                      <div>
+                        <h3 className="font-display font-bold text-xs text-slate-800">
+                          Have a Referral Code?
+                        </h3>
+                        <p className="text-[10px] text-slate-400 font-sans">
+                          Apply referral code to unlock rewards.
+                        </p>
+                      </div>
+                    </div>
+
+                    {!session.referralUsed ? (
+                      <div className="space-y-2">
+                        <div className="flex gap-1.5">
+                          <input
+                            type="text"
+                            value={referralInput}
+                            onChange={(e) => setReferralInput(e.target.value)}
+                            placeholder="REF-XXXXXX"
+                            className="flex-1 px-3 py-1.5 rounded-xl border border-slate-200 text-xs outline-none focus:border-indigo-500 font-mono uppercase bg-slate-50/50"
+                          />
+                          <button
+                            onClick={() => handleApplyReferralCode(referralInput)}
+                            className="bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold px-3 py-1.5 rounded-xl transition-colors cursor-pointer"
+                          >
+                            Apply
+                          </button>
+                        </div>
+                        {referralStatus && (
+                          <p className={`text-[10px] font-semibold font-sans ${
+                            referralStatus.type === 'success' ? 'text-emerald-650' : 'text-rose-650'
+                          }`}>
+                            {referralStatus.message}
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-2.5 text-center font-sans">
+                        <span className="text-[10px] font-bold text-emerald-700 block">
+                          ✓ Referral Code Applied
+                        </span>
+                        <span className="text-[9px] text-emerald-500 mt-0.5 block leading-snug">
+                          You received a 5% discount (5 Seeds equivalent) reward!
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Show user's own referral code */}
+                    <div className="bg-slate-50 rounded-xl p-2.5 border border-slate-100/60 flex items-center justify-between text-xs font-sans">
+                      <span className="text-slate-550 text-[10px] font-semibold">Your Referral Code:</span>
+                      <span className="font-mono font-bold text-indigo-600 bg-indigo-50/30 px-2 py-0.5 rounded-md border border-indigo-100/10">
+                        {session.referralCode}
+                      </span>
                     </div>
                   </div>
 
@@ -1413,6 +1761,17 @@ export default function App() {
                 </div>
 
                 <AvelynStickers />
+              </motion.div>
+            )}
+
+            {activeTab === 'admin' && session.role === 'admin' && (
+              <motion.div
+                key="admin-view"
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -15 }}
+              >
+                <AdminDashboard currentUserEmail={authUser.email || authUser.uid} />
               </motion.div>
             )}
           </AnimatePresence>
@@ -1623,6 +1982,25 @@ export default function App() {
                     <span>Curated Products Store</span>
                   </button>
 
+                  {/* Admin Control Center Link */}
+                  {session.role === 'admin' && (
+                    <button
+                      onClick={() => {
+                        playTabClickSound();
+                        setActiveTab('admin');
+                        setMobileMenuOpen(false);
+                      }}
+                      className={`w-full py-2.5 px-3 rounded-xl text-left text-xs font-bold flex items-center gap-2.5 transition-all cursor-pointer ${
+                        activeTab === 'admin'
+                          ? 'bg-rose-50 text-rose-700 border border-rose-100'
+                          : 'text-slate-600 hover:bg-slate-50 border border-transparent'
+                      }`}
+                    >
+                      <ShieldCheck className="w-4 h-4 text-rose-500" />
+                      <span>Admin Control Center</span>
+                    </button>
+                  )}
+
                   {/* Change Companion mascot trigger inside sidebar drawer */}
                   <button
                     onClick={() => {
@@ -1711,7 +2089,7 @@ export default function App() {
                 <button
                   onClick={() => {
                     setMobileMenuOpen(false);
-                    handleGoogleLogout();
+                    handleLogout();
                   }}
                   className="w-full py-2.5 rounded-xl bg-rose-50 border border-rose-100 hover:bg-rose-100 text-rose-600 font-bold text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
                 >

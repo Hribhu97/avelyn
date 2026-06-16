@@ -1,4 +1,4 @@
-export type BirdType = 'budgie' | 'lovebird' | 'cockatiel' | 'ringneck' | 'africangrey' | 'macaw' | 'other';
+export type BirdType = 'budgie' | 'lovebird' | 'cockatiel' | 'conure' | 'africangrey' | 'macaw' | 'finch' | 'canary' | 'other';
 
 export interface FlockInfo {
   birdTypes: BirdType[];
@@ -95,6 +95,23 @@ export interface UserState {
   lastCheckedDate: string; // YYYY-MM-DD to detect streak status
   healthObservations?: HealthObservationsState;
   activeMascot?: string;
+  role: 'admin' | 'user';
+  clientId: string;
+  referralCode: string;
+  referralUsed: boolean;
+  referralCount: number;
+  totalReferralSavings: number;
+  totalReferralRewards: number;
+  emergencyKitSetup?: boolean;
+  profileCompletePercent?: number;
+  email?: string;
+  phoneNumber?: string;
+  birdType?: BirdType[];
+  birdCount?: number;
+  experienceLevel?: 'Beginner' | 'Intermediate' | 'Advanced';
+  goals?: string[];
+  createdAt?: string;
+  lastLogin?: string;
 }
 
 export interface MascotPreset {
