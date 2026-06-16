@@ -6,3 +6,11 @@
   --font-sans: "Satoshi", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Lust", "Prata", "Bodoni Moda", serif;
 }
+
+@utility pb-iphone-safe {
+  padding-bottom: calc(5.5rem + env(safe-area-inset-bottom, 16px));
+}
+
+@utility pb-nav-safe {
+  padding-bottom: calc(10px + env(safe-area-inset-bottom, 16px));
+}

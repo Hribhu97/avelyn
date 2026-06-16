@@ -47,6 +47,9 @@ export default function DailyTasks({
         gainNode.connect(ctx.destination);
         oscillator.start();
         oscillator.stop(ctx.currentTime + 0.26);
+        setTimeout(() => {
+          ctx.close().catch(() => {});
+        }, 300);
       } else {
         // Lower tone click
         oscillator.frequency.setValueAtTime(320, ctx.currentTime);
@@ -57,6 +60,9 @@ export default function DailyTasks({
         gainNode.connect(ctx.destination);
         oscillator.start();
         oscillator.stop(ctx.currentTime + 0.1);
+        setTimeout(() => {
+          ctx.close().catch(() => {});
+        }, 150);
       }
     } catch (e) {
       // Ignored
@@ -147,7 +153,7 @@ export default function DailyTasks({
                 <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
                   Category Style
                 </label>
-                <div className="grid grid-cols-5 gap-1.5">
+                <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5">
                   {(['hydration', 'nutrition', 'social', 'exercise', 'custom'] as const).map((cat) => (
                     <button
                       type="button"

@@ -134,7 +134,7 @@ export default function OnboardingTour({ activeMascotId, onComplete }: Onboardin
 
   return (
     <AnimatePresence>
-      <div className="fixed bottom-16 right-4 z-40 max-w-sm w-[90vw] md:w-85 flex flex-col items-center">
+      <div className="fixed bottom-24 md:bottom-16 right-4 z-40 max-w-sm w-[90vw] md:w-85 flex flex-col items-center">
         
         {/* Cartoon Speech Bubble floating above mascot */}
         <motion.div

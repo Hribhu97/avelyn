@@ -394,7 +394,7 @@ export default function AdminDashboard({ currentUserEmail }: AdminDashboardProps
         {activeTab === 'analytics' && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
             {/* Grid stats */}
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
               {[
                 { label: 'Total Users', val: stats.totalUsers, icon: Users, color: 'text-indigo-500 bg-indigo-50' },
                 { label: 'Total Orders', val: stats.totalOrders, icon: ShoppingBag, color: 'text-sky-500 bg-sky-50' },

@@ -700,47 +700,49 @@ export default function ProductDiscovery({ session, saveSession }: ProductDiscov
             </div>
 
             {/* Comparison Grid */}
-            <div className="border border-slate-100 rounded-xl overflow-hidden text-xs divide-y divide-slate-100 mt-2 max-w-2xl mx-auto shadow-inner">
-              {/* Row: Brand */}
-              <div className="grid grid-cols-3 p-2 bg-slate-50/50">
-                <span className="font-bold text-slate-500 uppercase font-mono">Manufacturer</span>
-                <span className="font-semibold text-slate-800">{getProductDetails(compareId1).brand}</span>
-                <span className="font-semibold text-slate-800">{getProductDetails(compareId2).brand}</span>
-              </div>
+            <div className="w-full overflow-x-auto">
+              <div className="border border-slate-100 rounded-xl overflow-hidden text-xs divide-y divide-slate-100 mt-2 min-w-[480px] max-w-2xl mx-auto shadow-inner">
+                {/* Row: Brand */}
+                <div className="grid grid-cols-3 p-2 bg-slate-50/50">
+                  <span className="font-bold text-slate-500 uppercase font-mono">Manufacturer</span>
+                  <span className="font-semibold text-slate-800">{getProductDetails(compareId1).brand}</span>
+                  <span className="font-semibold text-slate-800">{getProductDetails(compareId2).brand}</span>
+                </div>
 
-              {/* Row: Rating */}
-              <div className="grid grid-cols-3 p-2">
-                <span className="font-bold text-slate-500 uppercase font-mono">Rating</span>
-                <span className="font-black text-amber-500 flex items-center gap-0.5">★ {getProductDetails(compareId1).rating}</span>
-                <span className="font-black text-amber-500 flex items-center gap-0.5">★ {getProductDetails(compareId2).rating}</span>
-              </div>
+                {/* Row: Rating */}
+                <div className="grid grid-cols-3 p-2">
+                  <span className="font-bold text-slate-500 uppercase font-mono">Rating</span>
+                  <span className="font-black text-amber-500 flex items-center gap-0.5">★ {getProductDetails(compareId1).rating}</span>
+                  <span className="font-black text-amber-500 flex items-center gap-0.5">★ {getProductDetails(compareId2).rating}</span>
+                </div>
 
-              {/* Row: Pricing */}
-              <div className="grid grid-cols-3 p-2 bg-slate-50/50">
-                <span className="font-bold text-slate-500 uppercase font-mono">Price</span>
-                <span className="font-black text-slate-800">₹{getProductDetails(compareId1).discountPrice.toFixed(2)}</span>
-                <span className="font-black text-slate-800">₹{getProductDetails(compareId2).discountPrice.toFixed(2)}</span>
-              </div>
+                {/* Row: Pricing */}
+                <div className="grid grid-cols-3 p-2 bg-slate-50/50">
+                  <span className="font-bold text-slate-500 uppercase font-mono">Price</span>
+                  <span className="font-black text-slate-800">₹{getProductDetails(compareId1).discountPrice.toFixed(2)}</span>
+                  <span className="font-black text-slate-800">₹{getProductDetails(compareId2).discountPrice.toFixed(2)}</span>
+                </div>
 
-              {/* Row: Benefit */}
-              <div className="grid grid-cols-3 p-2">
-                <span className="font-bold text-slate-500 uppercase font-mono">Benefit</span>
-                <span className="text-slate-600 leading-snug">{getProductDetails(compareId1).healthBenefits[0]}</span>
-                <span className="text-slate-600 leading-snug">{getProductDetails(compareId2).healthBenefits[0]}</span>
-              </div>
+                {/* Row: Benefit */}
+                <div className="grid grid-cols-3 p-2">
+                  <span className="font-bold text-slate-500 uppercase font-mono">Benefit</span>
+                  <span className="text-slate-600 leading-snug">{getProductDetails(compareId1).healthBenefits[0]}</span>
+                  <span className="text-slate-600 leading-snug">{getProductDetails(compareId2).healthBenefits[0]}</span>
+                </div>
 
-              {/* Row: Ingredients */}
-              <div className="grid grid-cols-3 p-2 bg-slate-50/50">
-                <span className="font-bold text-slate-500 uppercase font-mono">Ingredients</span>
-                <span className="text-[10px] text-slate-500 leading-tight pr-2 line-clamp-3 font-sans">{getProductDetails(compareId1).ingredients}</span>
-                <span className="text-[10px] text-slate-500 leading-tight line-clamp-3 font-sans">{getProductDetails(compareId2).ingredients}</span>
-              </div>
+                {/* Row: Ingredients */}
+                <div className="grid grid-cols-3 p-2 bg-slate-50/50">
+                  <span className="font-bold text-slate-500 uppercase font-mono">Ingredients</span>
+                  <span className="text-[10px] text-slate-500 leading-tight pr-2 line-clamp-3 font-sans">{getProductDetails(compareId1).ingredients}</span>
+                  <span className="text-[10px] text-slate-500 leading-tight line-clamp-3 font-sans">{getProductDetails(compareId2).ingredients}</span>
+                </div>
 
-              {/* Row: Vet Trust */}
-              <div className="grid grid-cols-3 p-2">
-                <span className="font-bold text-slate-500 uppercase font-mono">Vet Trust</span>
-                <span className="text-[10px] italic text-slate-550 leading-relaxed pr-2 line-clamp-3 font-sans">"{getProductDetails(compareId1).vetNotes}"</span>
-                <span className="text-[10px] italic text-slate-550 leading-relaxed line-clamp-3 font-sans">"{getProductDetails(compareId2).vetNotes}"</span>
+                {/* Row: Vet Trust */}
+                <div className="grid grid-cols-3 p-2">
+                  <span className="font-bold text-slate-500 uppercase font-mono">Vet Trust</span>
+                  <span className="text-[10px] italic text-slate-550 leading-relaxed pr-2 line-clamp-3 font-sans">"{getProductDetails(compareId1).vetNotes}"</span>
+                  <span className="text-[10px] italic text-slate-550 leading-relaxed line-clamp-3 font-sans">"{getProductDetails(compareId2).vetNotes}"</span>
+                </div>
               </div>
             </div>
           </motion.div>

@@ -229,6 +229,10 @@ export default function AvelynCamera({ flockRepresentativeName }: AvelynCameraPr
         gain.connect(ctx.destination);
         osc.start();
         osc.stop(ctx.currentTime + 0.2);
+        // iOS Safari AudioContext disposal
+        setTimeout(() => {
+          ctx.close().catch(() => {});
+        }, 250);
       }
     } catch (_) {}
   };

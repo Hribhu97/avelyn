@@ -132,6 +132,10 @@ export default function App() {
       gain.connect(ctx.destination);
       osc.start();
       osc.stop(ctx.currentTime + 0.08);
+      // iOS Safari safe cleanup
+      setTimeout(() => {
+        ctx.close().catch(() => {});
+      }, 100);
     } catch (e) {
       // Ignore
     }
@@ -1296,8 +1300,8 @@ export default function App() {
         </div>
       </header>
 
-      {/* Main Container Area - 8px spacing offset with pb-20 to prevent bottom nav overlap on mobile */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-2 space-y-2 pb-20 md:pb-2">
+      {/* Main Container Area - 8px spacing offset with pb-iphone-safe to prevent bottom nav overlap on mobile */}
+      <main className="flex-1 max-w-7xl w-full mx-auto p-2 space-y-2 pb-iphone-safe md:pb-2">
         {/* Onboarding Summary Bar - 8px spacing */}
         <div className="bg-emerald-50/50 border-2 border-emerald-100 rounded-2xl p-2 flex gap-2 items-center justify-between flex-wrap text-xs text-slate-600">
           <div className="flex items-center gap-2 flex-wrap">
@@ -1421,7 +1425,7 @@ export default function App() {
                 {/* Left 2 Column: Main checks */}
                 <div className="lg:col-span-2 space-y-2">
                   {/* Hero Welcomer Screen */}
-                  <div className="bg-gradient-to-br from-white via-white to-slate-50/30 border-2 border-slate-100/80 rounded-3xl p-6 md:p-10 flex flex-row items-center justify-between gap-6 md:gap-10 shadow-sm relative overflow-visible">
+                  <div className="bg-gradient-to-br from-white via-white to-slate-50/30 border-2 border-slate-100/80 rounded-3xl p-6 md:p-10 flex flex-col md:flex-row items-center justify-between gap-4 md:gap-10 shadow-sm relative overflow-visible">
                     <div className="absolute top-0 right-0 w-48 h-48 bg-emerald-50/15 rounded-full blur-3xl pointer-events-none" />
 
                     <div className="space-y-5 flex-1 min-w-0 order-1">
@@ -1777,7 +1781,7 @@ export default function App() {
       </footer>
 
       {/* Mobile Bottom Navigation Bar */}
-      <div className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-100 shadow-lg px-2 py-2.5 flex items-center justify-around md:hidden">
+      <div className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-100 shadow-lg px-2 pt-2.5 pb-nav-safe flex items-center justify-around md:hidden">
         {/* Home */}
         <button
           onClick={() => {
