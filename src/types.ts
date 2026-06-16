@@ -105,10 +105,10 @@ export interface MascotPreset {
 }
 
 export const MASCOT_PRESETS: MascotPreset[] = [
-  { id: 'budgie_wave', name: 'Yellow Budgie', src: '/src/assets/images/budgie_wave_1781590939270.jpg', desc: 'Winking and waving happily' },
-  { id: 'blue_budgie', name: 'Ringneck', src: '/src/assets/images/budgie_blue_1781590998062.jpg', desc: 'Eating a sunflower seed' },
-  { id: 'green_parrotlet', name: 'Parrot', src: '/src/assets/images/parrotlet_wink_1781591014609.jpg', desc: 'Eating a sunflower seed' },
-  { id: 'lovebird_fly', name: 'Flying Lovebird', src: '/src/assets/images/lovebird_fly_1781590984756.jpg', desc: 'Spreading wings with joy' },
-  { id: 'java_sparrow', name: 'Java Sparrow', src: '/src/assets/images/java_sparrow_1781590970610.jpg', desc: 'Munching delicious seeds' },
-  { id: 'cockatiel', name: 'Cockatiel', src: '/src/assets/images/cockatiel_blush_1781591030021.jpg', desc: 'Blushing with crest standing tall' },
+  { id: 'budgie_wave', name: 'Yellow Budgie', src: '/images/budgie_wave_1781590939270.jpg', desc: 'Winking and waving happily' },
+  { id: 'blue_budgie', name: 'Ringneck', src: '/images/budgie_blue_1781590998062.jpg', desc: 'Eating a sunflower seed' },
+  { id: 'green_parrotlet', name: 'Parrot', src: '/images/parrotlet_wink_1781591014609.jpg', desc: 'Eating a sunflower seed' },
+  { id: 'lovebird_fly', name: 'Flying Lovebird', src: '/images/lovebird_fly_1781590984756.jpg', desc: 'Spreading wings with joy' },
+  { id: 'java_sparrow', name: 'Java Sparrow', src: '/images/java_sparrow_1781590970610.jpg', desc: 'Munching delicious seeds' },
+  { id: 'cockatiel', name: 'Cockatiel', src: '/images/cockatiel_blush_1781591030021.jpg', desc: 'Blushing with crest standing tall' },
 ];
